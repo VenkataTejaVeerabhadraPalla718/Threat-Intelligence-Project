@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sentinelx-lab18
+  labels:
+    app: sentinelx
+    lab: "18"
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app: sentinelx
+        lab: "18"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: lab18-benchmark
+          image: sentinelx-local-api:latest
+          imagePullPolicy: Never
+          workingDir: /app
+          command: ["python", "-u", "/app/labs/lab18/01_benchmark.py"]
+          env:
+            - name: LAB18_REQUIRED_RECORDS
+              value: "300000"
+            - name: LAB18_RUNS
+              value: "10"
+            - name: MONGO_HOST
+              value: "host.docker.internal"
+            - name: MONGO_PORT
+              value: "27118"
+            - name: CASSANDRA_HOST
+              value: "host.docker.internal"
+            - name: CASSANDRA_PORT
+              value: "9042"
+            - name: NEO4J_URI
+              value: "bolt://host.docker.internal:7687"
+            - name: NEO4J_USER
+              value: "neo4j"
+            - name: NEO4J_PASSWORD
+              value: "change-this-local"
+            - name: LAB18_REPORT_PATH
+              value: "/reports/benchmark_report.md"
+          volumeMounts:
+            - name: reports
+              mountPath: /reports
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "384Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+      volumes:
+        - name: reports
+          emptyDir: {}

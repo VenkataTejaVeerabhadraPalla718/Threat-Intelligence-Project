@@ -1,0 +1,14 @@
+services:
+  mongo-auth:
+    image: mongo:7
+    container_name: mongo-auth
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    ports: ["27200:27017"]
+  mongo-tls:
+    image: mongo:7
+    container_name: mongo-tls
+    command: mongod --tlsMode requireTLS --tlsCertificateKeyFile /certs/server.pem --tlsCAFile /certs/ca.crt --tlsAllowConnectionsWithoutCertificates --bind_ip_all
+    volumes: ["./certs:/certs:ro"]
+    ports: ["27201:27017"]

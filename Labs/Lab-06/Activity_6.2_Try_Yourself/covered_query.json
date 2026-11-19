@@ -1,0 +1,20 @@
+{
+  "query": {
+    "category": "Electronics",
+    "price": {
+      "$gte": 100,
+      "$lte": 800
+    }
+  },
+  "projection": {
+    "_id": 0,
+    "category": 1,
+    "price": 1,
+    "name": 1
+  },
+  "index": [
+    "category",
+    "price",
+    "name"
+  ]
+}

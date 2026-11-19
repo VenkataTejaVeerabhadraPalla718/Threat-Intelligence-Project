@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a2b">
+  <title>Threat Intelligence Chat</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      color: #172033;
+      background: #f3f6fb;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px max(24px, calc((100vw - 1060px) / 2));
+      color: #f7f9ff;
+      background: #101a2b;
+      border-bottom: 1px solid #25334b;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border-radius: 12px;
+      color: #102037;
+      background: #71e0c2;
+      font-weight: 800;
+    }
+    .brand-title { margin: 0; font-size: 16px; }
+    .brand-subtitle { margin: 3px 0 0; color: #aab6cb; font-size: 12px; }
+    .topbar a { color: #c5d2e8; font-size: 13px; text-decoration: none; }
+    .topbar a:hover { color: #fff; }
+    main { width: min(940px, calc(100% - 32px)); margin: 32px auto; }
+    .intro { margin-bottom: 20px; }
+    .intro h1 { margin: 0 0 8px; font-size: clamp(24px, 4vw, 32px); }
+    .intro p { margin: 0; color: #657189; line-height: 1.5; }
+    .auth-panel {
+      max-width: 460px;
+      margin: 0 auto 24px;
+      padding: 22px;
+      border: 1px solid #e1e7f0;
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 16px 42px #23385612;
+    }
+    .auth-panel h2 { margin: 0 0 8px; font-size: 20px; }
+    .auth-panel p { color: #657189; font-size: 13px; line-height: 1.5; }
+    .auth-form { display: grid; gap: 12px; margin-top: 16px; }
+    .auth-form label { display: grid; gap: 6px; }
+    .auth-form input {
+      min-height: 42px;
+      padding: 0 11px;
+      border: 1px solid #dce3ed;
+      border-radius: 9px;
+    }
+    .auth-submit, .logout {
+      min-height: 38px;
+      padding: 0 14px;
+      border: 0;
+      border-radius: 9px;
+      color: #fff;
+      background: #2459a6;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .auth-submit:disabled { opacity: .6; cursor: wait; }
+    .auth-error { min-height: 18px; margin-bottom: 0; color: #b42318 !important; }
+    .logout { min-height: 30px; padding: 0 10px; background: #53627a; font-size: 12px; }
+    #loginPanel[hidden], #chatPanel[hidden] { display: none; }
+    .panel {
+      overflow: hidden;
+      border: 1px solid #e1e7f0;
+      border-radius: 18px;
+      background: #fff;
+      box-shadow: 0 16px 42px #23385612;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid #edf0f5;
+    }
+    .status { display: flex; align-items: center; gap: 8px; color: #657189; font-size: 13px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #20aa81; }
+    label { color: #566178; font-size: 13px; }
+    select, input, button { font: inherit; }
+    select {
+      min-height: 38px;
+      padding: 0 34px 0 11px;
+      border: 1px solid #dce3ed;
+      border-radius: 9px;
+      color: #29364c;
+      background: #fff;
+    }
+    #log {
+      display: flex;
+      min-height: 390px;
+      max-height: 56vh;
+      flex-direction: column;
+      gap: 16px;
+      overflow-y: auto;
+      padding: 22px;
+      scroll-behavior: smooth;
+    }
+    .welcome { margin: auto; max-width: 430px; color: #6a7589; text-align: center; line-height: 1.6; }
+    .welcome strong { display: block; margin-bottom: 6px; color: #26344b; font-size: 18px; }
+    .message { display: flex; max-width: 86%; flex-direction: column; gap: 5px; }
+    .message.user { align-self: flex-end; align-items: flex-end; }
+    .message.assistant { align-self: flex-start; }
+    .message-label { color: #7a8497; font-size: 11px; }
+    .bubble {
+      padding: 12px 15px;
+      border-radius: 14px;
+      background: #f0f3f8;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+    .user .bubble { color: #fff; background: #2459a6; border-bottom-right-radius: 4px; }
+    .assistant .bubble { border-bottom-left-radius: 4px; }
+    .sources { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 2px; }
+    .sources a, .sources span {
+      padding: 6px 9px;
+      border: 1px solid #dce7f5;
+      border-radius: 8px;
+      color: #2459a6;
+      background: #f8fbff;
+      font-size: 12px;
+      text-decoration: none;
+    }
+    .sources a:hover { border-color: #9fbce4; background: #f0f6ff; }
+    .composer { padding: 14px 18px 17px; border-top: 1px solid #edf0f5; }
+    .input-row { display: flex; gap: 10px; }
+    #q {
+      min-width: 0;
+      min-height: 48px;
+      flex: 1;
+      padding: 0 14px;
+      border: 1px solid #dce3ed;
+      border-radius: 11px;
+      outline: none;
+    }
+    #q:focus, select:focus { border-color: #7da5dc; box-shadow: 0 0 0 3px #3273c51a; }
+    #send {
+      min-width: 94px;
+      padding: 0 18px;
+      border: 0;
+      border-radius: 11px;
+      color: #fff;
+      background: #2459a6;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    #send:hover { background: #194987; }
+    #send:disabled { opacity: .6; cursor: wait; }
+    .hint { margin: 9px 2px 0; color: #8590a3; font-size: 11px; }
+    @media (max-width: 600px) {
+      .topbar { padding: 14px 16px; }
+      main { margin: 22px auto; }
+      .auth-panel { padding: 18px; }
+      #log { min-height: 50vh; max-height: 58vh; padding: 16px 12px; }
+      .message { max-width: 94%; }
+      .toolbar, .composer { padding-right: 12px; padding-left: 12px; }
+      #send { min-width: 76px; padding: 0 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">CTI</div>
+      <div>
+        <p class="brand-title">Threat Intelligence Platform</p>
+        <p class="brand-subtitle">Sign in with a Lab 15 account</p>
+      </div>
+    </div>
+    <a href="/">Back to threat dashboard</a>
+  </header>
+  <main>
+    <section class="intro">
+      <h1>Threat intelligence chat</h1>
+      <p>Ask about stored threat intelligence or filter it by platform and lifecycle. Use <b>scan</b> to search MongoDB threat records not marked Resolved.</p>
+    </section>
+    <section class="auth-panel" id="loginPanel" aria-labelledby="loginTitle">
+      <h2 id="loginTitle">Sign in to chat</h2>
+      <p>Use your Lab 15 account. Demo user: <strong>user_windows</strong> / <strong>pass123</strong>.</p>
+      <form class="auth-form" id="loginForm">
+        <label for="loginUsername">Username
+          <input id="loginUsername" name="username" autocomplete="username" required>
+        </label>
+        <label for="loginPassword">Password
+          <input id="loginPassword" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="auth-submit" id="loginButton" type="submit">Sign in</button>
+      </form>
+      <p class="auth-error" id="loginError" role="status" aria-live="polite"></p>
+    </section>
+    <section class="panel" id="chatPanel" aria-label="Threat intelligence assistant" hidden>
+      <div class="toolbar">
+        <div class="status">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="userStatus">Signed in</span>
+          <button class="logout" id="logout" type="button">Sign out</button>
+        </div>
+        <div>
+          <label for="platform">Platform
+            <select id="platform">
+            <option value="">All platforms</option>
+            <option value="windows">Windows</option>
+            <option value="linux">Linux</option>
+            <option value="macos">macOS</option>
+            <option value="android">Android</option>
+            <option value="ios">iOS</option>
+            </select>
+          </label>
+          <label for="status">Lifecycle
+            <select id="status">
+              <option value="">All statuses</option>
+              <option value="Anticipated">Anticipated</option>
+              <option value="Active">Active</option>
+              <option value="Evolving">Evolving</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div id="log" role="log" aria-live="polite" aria-relevant="additions text">
+        <div class="welcome" id="welcome">
+          <strong>How can I help?</strong>
+          Ask about a threat, choose platform and lifecycle filters, or type <b>scan</b> to list matching MongoDB threat records not marked Resolved.
+        </div>
+      </div>
+      <form class="composer" id="composer">
+        <div class="input-row">
+          <input id="q" name="message" maxlength="4000" autocomplete="off"
+                 placeholder="Ask a question or type “scan”" aria-label="Message" required>
+          <button id="send" type="submit">Send</button>
+        </div>
+        <p class="hint">Confirming a fix marks the matching MongoDB threat record Resolved.</p>
+      </form>
+    </section>
+  </main>
+  <script>
+    const log = document.getElementById("log");
+    const loginPanel = document.getElementById("loginPanel");
+    const loginForm = document.getElementById("loginForm");
+    const loginButton = document.getElementById("loginButton");
+    const loginError = document.getElementById("loginError");
+    const chatPanel = document.getElementById("chatPanel");
+    const userStatus = document.getElementById("userStatus");
+    const form = document.getElementById("composer");
+    const input = document.getElementById("q");
+    const sendButton = document.getElementById("send");
+    const tokenKey = "cti-chat-token";
+    const userKey = "cti-chat-user";
+    const sessionKey = "cti-chat-session";
+    let token = sessionStorage.getItem(tokenKey);
+
+    function newSessionId() {
+      const id = crypto.randomUUID();
+      sessionStorage.setItem(sessionKey, id);
+      return id;
+    }
+
+    let sessionId = sessionStorage.getItem(sessionKey) || newSessionId();
+
+    function resetConversation() {
+      log.replaceChildren();
+      const welcome = document.createElement("div");
+      welcome.className = "welcome";
+      const title = document.createElement("strong");
+      title.textContent = "How can I help?";
+      welcome.append(title, document.createTextNode(
+        "Ask about a threat, choose platform and lifecycle filters, or type scan to list matching MongoDB threat records not marked Resolved."
+      ));
+      log.appendChild(welcome);
+    }
+
+    function requireLogin(message) {
+      token = null;
+      sessionStorage.removeItem(tokenKey);
+      sessionStorage.removeItem(userKey);
+      sessionId = newSessionId();
+      loginPanel.hidden = false;
+      chatPanel.hidden = true;
+      loginError.textContent = message || "";
+      resetConversation();
+    }
+
+    function showChat(username) {
+      loginError.textContent = "";
+      loginPanel.hidden = true;
+      chatPanel.hidden = false;
+      userStatus.textContent = `Signed in as ${username || "user"}`;
+    }
+
+    if (token) {
+      showChat(sessionStorage.getItem(userKey));
+    } else {
+      requireLogin("");
+    }
+
+    loginForm.addEventListener("submit", async event => {
+      event.preventDefault();
+      if (loginButton.disabled) return;
+      loginError.textContent = "";
+      loginButton.disabled = true;
+      try {
+        const username = document.getElementById("loginUsername").value.trim();
+        const password = document.getElementById("loginPassword").value;
+        const response = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || `Sign in failed (${response.status})`);
+        token = result.access_token;
+        sessionStorage.setItem(tokenKey, token);
+        sessionStorage.setItem(userKey, username);
+        showChat(username);
+        input.focus();
+      } catch (error) {
+        loginError.textContent = error.message || "Unable to sign in.";
+      } finally {
+        loginButton.disabled = false;
+      }
+    });
+
+    document.getElementById("logout").addEventListener("click", () => {
+      requireLogin("");
+      document.getElementById("loginPassword").value = "";
+    });
+
+    function addMessage(role, text) {
+      document.getElementById("welcome")?.remove();
+      const wrapper = document.createElement("div");
+      wrapper.className = `message ${role}`;
+      const label = document.createElement("span");
+      label.className = "message-label";
+      label.textContent = role === "user" ? "You" : "Assistant";
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = text;
+      wrapper.append(label, bubble);
+      log.appendChild(wrapper);
+      log.scrollTop = log.scrollHeight;
+      return wrapper;
+    }
+
+    function addSources(wrapper, sources) {
+      const links = document.createElement("div");
+      links.className = "sources";
+      for (const source of sources) {
+        const details = [source.title || `Record ${source.record_id || "unknown"}`];
+        const metadata = [source.platform, source.status].filter(Boolean).join(" · ");
+        if (metadata) details.push(metadata);
+        if (source.score !== null && source.score !== undefined && Number.isFinite(Number(source.score))) {
+          details.push(`score ${Number(source.score).toFixed(3)}`);
+        }
+
+        let link;
+        if (source.url) {
+          try {
+            const url = new URL(source.url);
+            if (url.protocol === "http:" || url.protocol === "https:") {
+              link = document.createElement("a");
+              link.href = url.href;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+            }
+          } catch {
+            link = null;
+          }
+        }
+        const item = link || document.createElement("span");
+        item.textContent = details.join(" · ");
+        links.appendChild(item);
+      }
+      if (links.childElementCount) wrapper.appendChild(links);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+      const message = input.value.trim();
+      if (!message || sendButton.disabled) return;
+      if (!token) {
+        requireLogin("Please sign in to continue.");
+        return;
+      }
+      input.value = "";
+      addMessage("user", message);
+      const reply = addMessage("assistant", "Thinking…");
+      const bubble = reply.querySelector(".bubble");
+      sendButton.disabled = true;
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            message,
+            session_id: sessionId,
+            platform: document.getElementById("platform").value,
+            status: document.getElementById("status").value
+          })
+        });
+        const result = await response.json();
+        if (response.status === 401) {
+          bubble.textContent = "Your session expired. Please sign in again.";
+          requireLogin("Your session expired. Please sign in again.");
+          return;
+        }
+        if (!response.ok) throw new Error(result.detail || `Request failed (${response.status})`);
+        bubble.textContent = result.reply || result.answer || "The assistant returned no response.";
+        addSources(reply, result.sources || []);
+      } catch (error) {
+        bubble.textContent = `Unable to get a response: ${error.message}`;
+      } finally {
+        sendButton.disabled = false;
+        input.focus();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,673 @@
+'use strict';
+/* ============================ helpers ============================ */
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const TOKEN = 'sentinelx_access_token', USER = 'sentinelx_user';
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = n => Number(n || 0).toLocaleString();
+const parseDate = v => { if (!v) return null; let s = String(v); if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z'; const d = new Date(s); return isNaN(d) ? null : d; };
+const fdate = v => { const d = parseDate(v); return d ? d.toLocaleString() : (v ? esc(v) : '—'); };
+const qs = o => { const p = new URLSearchParams(); Object.entries(o).forEach(([k, v]) => { if (v !== '' && v != null) p.set(k, v); }); return p.toString(); };
+const me = () => { try { return JSON.parse(localStorage.getItem(USER) || 'null'); } catch { return null; } };
+const isAdmin = () => me()?.role === 'admin';
+const LABS = {
+  1: ['Database foundations', 'Database classification, NoSQL concepts and application mapping'],
+  2: ['MongoDB environment & CRUD', 'Environment verification, server information and bookstore CRUD'],
+  3: ['Document modeling & migration', 'Embedded schema design, blog migration and document relationships'],
+  4: ['Queries, updates & bulk operations', 'Product queries, upserts and bulk write operations'],
+  5: ['Aggregation pipelines', 'Sales analytics, order-value buckets and product joins'],
+  6: ['Index design & performance', 'Query-plan comparisons, index statistics and covered queries'],
+  7: ['Data modeling & performance', 'Embedded vs referenced documents, working-set reads and monitoring'],
+  8: ['Replication & failover', 'Replica-set health, elections, priority and failover'],
+  9: ['Write concern & partitions', 'Write acknowledgement latency and partition behavior'],
+  10: ['Transactions & consistency', 'Transfers, rollback and inventory contention'],
+  11: ['Sharding & shard keys', 'Shard-key distribution and hotspot analysis'],
+  12: ['Security: RBAC & TLS', 'Role-based access, field redaction and encrypted transport'],
+  13: ['Authenticated failover', 'Keyfile-protected replica-set failover'],
+  14: ['Monitoring & backup', 'Operational metrics, backup and restore verification'],
+  15: ['Multi-tenant isolation', 'Tenant seeding, API isolation, rate limits and migration'],
+  16: ['Polyglot persistence', 'MongoDB, Cassandra and Neo4j integration'],
+  17: ['Vector search & RAG', 'Local embeddings, retrieval and vector benchmarks'],
+  18: ['Cross-database benchmark', 'Comparable query latency across data stores'],
+};
+const STATUS = { passed: ['ok', 'PASSED'], failed: ['bad', 'FAILED'], not_run: ['warn', 'NOT RUN'], manual: ['info', 'MANUAL STEPS'], no_runner: ['', 'NO RUNNER'] };
+
+async function api(url, opts = {}) {
+  const h = new Headers(opts.headers || {});
+  const t = localStorage.getItem(TOKEN);
+  if (t) h.set('Authorization', 'Bearer ' + t);
+  if (opts.json !== undefined) { h.set('Content-Type', 'application/json'); opts = { ...opts, body: JSON.stringify(opts.json) }; }
+  let r;
+  try { r = await fetch(url, { ...opts, headers: h }); } catch (e) { throw new Error('Cannot reach the SENTINEL-X API. Check that the containers are running.'); }
+  if (r.status === 401 && t) { endSession('Your session has expired. Please sign in again.'); throw new Error('Session expired'); }
+  if (!r.ok) {
+    let d = null; try { d = await r.json(); } catch { }
+    const det = d?.detail;
+    const msg = Array.isArray(det) ? det.map(x => x.msg).join('; ') : (det || r.statusText || 'Request failed');
+    throw Object.assign(new Error(msg), { status: r.status });
+  }
+  return opts.raw ? r : r.json();
+}
+async function download(url, name) {            // authenticated file download (a plain link cannot send the token)
+  try {
+    const r = await api(url, { raw: true }), b = await r.blob(), a = document.createElement('a');
+    a.href = URL.createObjectURL(b); a.download = name; document.body.append(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  } catch (e) { alert('Download failed: ' + e.message); }
+}
+function endSession(msg) { localStorage.removeItem(TOKEN); localStorage.removeItem(USER); if (msg) sessionStorage.setItem('sx-flash', msg); location.href = '/login'; }
+async function logout() { try { await api('/api/auth/logout', { method: 'POST' }); } catch { } endSession(); }
+const copyText = (t, btn) => navigator.clipboard?.writeText(t).then(() => { if (btn) { const o = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = o, 1400); } }).catch(() => prompt('Copy:', t));
+document.addEventListener('click', e => { const b = e.target.closest('[data-copy]'); if (b) copyText(b.closest('.codeblock').querySelector('code').textContent, b); });
+const loading = (msg = 'Loading…') => `<div class="loading"><span class="spinner"></span>${esc(msg)}</div>`;
+const errBox = (m, retry = true) => `<div class="errbox">${esc(m)}</div>${retry ? '<button class="btn" onclick="route()">Retry</button>' : ''}`;
+const shell = (title, desc, extra = '') => `<div class="hero"><div><div class="eyebrow">SENTINEL-X</div><h1>${esc(title)}</h1><p>${esc(desc)}</p></div>${extra}</div>`;
+const kpi = (label, value, sub = '', glow = '') => `<article class="kpi" style="--glow:${glow}"><span>${esc(label)}</span><strong>${value}</strong><small>${sub}</small></article>`;
+const pill = (cls, t) => `<span class="pill ${cls}">${esc(t)}</span>`;
+const sevPill = s => { const k = String(s || '').toLowerCase(); return pill(k === 'critical' || k === 'high' ? 'bad' : k === 'medium' ? 'warn' : k === 'low' ? 'ok' : '', s || 'Unknown'); };
+const pager = (total, skip, limit) => `<div class="pager"><span>${total ? `${fmt(skip + 1)}–${fmt(Math.min(skip + limit, total))} of ${fmt(total)}` : 'No results'}</span><span class="toolbar"><button class="btn sm" data-page="prev" ${skip <= 0 ? 'disabled' : ''}>← Previous</button><button class="btn sm" data-page="next" ${skip + limit >= total ? 'disabled' : ''}>Next →</button></span></div>`;
+
+/* ============================ charts ============================ */
+const PAL = ['#38d6c3', '#5c9dff', '#a78bfa', '#ffbd69', '#ff647c', '#55d6a2', '#7dd3fc', '#f472b6', '#facc15', '#94a3b8'];
+const SEVCOL = { critical: '#ff647c', high: '#ffbd69', medium: '#5c9dff', low: '#55d6a2', informational: '#a78bfa', unclassified: '#52627d' };
+let charts = [], redraw = null;
+const chartPanel = (title, sub, id, tall = '') => `<section class="panel"><div class="panelhead"><h3>${title}</h3><span class="sub">${sub || ''}</span></div><div class="chartbox ${tall}"><canvas id="${id}"></canvas><div class="empty hidden" id="${id}-empty">No data available for this range.</div></div></section>`;
+function drawChart(id, type, labels, datasets, extra = {}) {
+  const el = document.getElementById(id), empty = document.getElementById(id + '-empty'); if (!el) return;
+  const has = labels.length && datasets.some(d => d.data.some(v => v > 0));
+  el.classList.toggle('hidden', !has); empty?.classList.toggle('hidden', has);
+  if (!has) return;
+  if (!window.Chart) { el.classList.add('hidden'); empty.textContent = 'Chart library unavailable (requires access to cdn.jsdelivr.net).'; empty.classList.remove('hidden'); return; }
+  const dark = document.documentElement.dataset.theme === 'dark';
+  const axis = { ticks: { color: dark ? '#8fa3c3' : '#687b98', font: { size: 10 } }, grid: { color: dark ? '#243451' : '#e6edf5' } };
+  const options = { responsive: true, maintainAspectRatio: false, ...extra.options, plugins: { legend: { display: datasets.length > 1 || type === 'doughnut', position: type === 'doughnut' ? 'right' : 'top', labels: { color: dark ? '#a9bad4' : '#52647f', boxWidth: 10, font: { size: 10 } } } } };
+  if (type !== 'doughnut') options.scales = { x: { ...axis, ...(extra.x || {}) }, y: { ...axis, beginAtZero: true, ...(extra.y || {}) } };
+  charts.push(new Chart(el, { type, data: { labels, datasets }, options }));
+}
+const killCharts = () => { charts.forEach(c => c.destroy()); charts = []; redraw = null; };
+
+/* ============================ authentication UI ============================ */
+function showAuth(mode) {
+  const reg = mode === 'register', flash = sessionStorage.getItem('sx-flash'); sessionStorage.removeItem('sx-flash');
+  $('#appRoot').classList.add('hidden'); const root = $('#authRoot'); root.classList.remove('hidden');
+  root.innerHTML = `<div class="authscreen"><form class="authcard" id="authForm" novalidate>
+    <h1>${reg ? 'Create account' : 'Sign in'}</h1>
+    <div class="authfield"><label for="u">Username</label><input id="u" autocomplete="username" maxlength="40" autofocus></div>
+    <div class="authfield"><label for="p">Password</label><div class="pwwrap"><input id="p" type="password" autocomplete="${reg ? 'new-password' : 'current-password'}"><button type="button" id="showpw">Show</button></div>${reg ? '<span class="authhint">Minimum 12 characters.</span>' : ''}</div>
+    ${reg ? '<div class="authfield"><label for="c">Confirm password</label><input id="c" type="password" autocomplete="new-password"></div>' : ''}
+    <div class="authmsg ${flash && !flash.toLowerCase().includes('expired') ? 'ok' : ''}" id="msg" role="alert">${esc(flash || '')}</div>
+    <button class="btn primary" id="go" type="submit">${reg ? 'Create account' : 'Sign in'}</button>
+    <div class="authlink">${reg ? '<a href="/login">Already registered? Sign in</a>' : '<a href="/register">Create an account</a>'}</div></form></div>`;
+  $('#showpw').onclick = () => { const p = $('#p'), s = p.type === 'password'; p.type = s ? 'text' : 'password'; if ($('#c')) $('#c').type = p.type; $('#showpw').textContent = s ? 'Hide' : 'Show'; };
+  $('#authForm').onsubmit = async e => {
+    e.preventDefault();
+    const u = $('#u').value.trim(), p = $('#p').value, msg = $('#msg'), btn = $('#go'); msg.className = 'authmsg';
+    const fail = t => { msg.textContent = t; };
+    if (!u) return fail('Enter your username.'); if (!p) return fail('Enter your password.');
+    if (reg) {
+      if (!/^[A-Za-z0-9_.-]{3,40}$/.test(u)) return fail('Username must be 3–40 characters: letters, digits, dot, underscore or hyphen.');
+      if (p.length < 12) return fail('Password must contain at least 12 characters.');
+      if (p !== $('#c').value) return fail('Passwords do not match.');
+    }
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> ' + (reg ? 'Creating…' : 'Signing in…'); msg.textContent = '';
+    try {
+      const r = await fetch(reg ? '/api/auth/register' : '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(Array.isArray(d.detail) ? d.detail.map(x => x.msg).join('; ') : d.detail || 'Authentication failed.');
+      if (reg) { sessionStorage.setItem('sx-flash', 'Account created. Please sign in.'); location.href = '/login'; return; }
+      localStorage.setItem(TOKEN, d.access_token);
+      const info = await api('/api/auth/me'); localStorage.setItem(USER, JSON.stringify(info)); location.href = '/console';
+    } catch (err) { fail(err.message); btn.disabled = false; btn.textContent = reg ? 'Create account' : 'Sign in'; }
+  };
+}
+
+/* ============================ shell / routing ============================ */
+const routeInfo = () => { const p = new URLSearchParams(location.search); return { page: p.get('page') || 'overview', lab: p.get('lab') }; };
+function buildNav() {
+  const { page, lab } = routeInfo(), a = (href, ico, label, key) => `<a href="${href}" data-nav class="${!lab && page === key ? 'active' : ''}"><span class="ico">${ico}</span><span class="lbl">${label}</span></a>`;
+  $('#nav').innerHTML = a('/console', '◈', 'Overview', 'overview') + a('/console?page=assistant', '✧', 'Boss · AI Assistant', 'assistant') + a('/console?page=threats', '⌁', 'Threat Intelligence', 'threats') + a('/console?page=security', '⛨', 'Security Center', 'security') +
+    `<details id="expDet" class="${lab || page === 'labs' ? 'has-active' : ''}" ${lab || page === 'labs' ? 'open' : ''}><summary><span class="ico">▦</span><span class="lbl">Experiments</span><span class="caret">›</span></summary><div class="sub-nav">
+      <a href="/console?page=labs" data-nav class="${page === 'labs' && !lab ? 'active' : ''}"><span class="lbl">All experiments</span></a>
+      ${Object.keys(LABS).map(n => `<a href="/console?lab=${n}" data-nav class="${String(lab) === n ? 'active' : ''}"><span class="lbl">Lab ${n}</span></a>`).join('')}</div></details>` +
+    a('/console?page=sources', '◎', 'Intelligence Sources', 'sources') + (isAdmin() ? a('/console?page=admin', '♙', 'Administration', 'admin') : '');
+  $('#expDet > summary').addEventListener('click', () => { if (document.body.classList.contains('collapsed') && innerWidth > 860) document.body.classList.remove('collapsed'); });
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[data-nav]'); if (!a || e.metaKey || e.ctrlKey) return;
+  e.preventDefault(); history.pushState({}, '', a.getAttribute('href')); document.body.classList.remove('navopen'); route();
+});
+addEventListener('popstate', () => route());
+function toggleMenu() { if (innerWidth > 860) { document.body.classList.toggle('collapsed'); localStorage.setItem('sx-collapsed', document.body.classList.contains('collapsed') ? '1' : ''); } else document.body.classList.toggle('navopen'); }
+
+
+/* ============================ host security center ============================ */
+let securityPollTimer = null;
+let securitySeenIds = new Set();
+async function securityCenter() {
+  if (securityPollTimer) clearInterval(securityPollTimer);
+  securityPollTimer = null;
+  setCrumb('SECURITY CENTER');
+  const d = await api('/api/security/findings');
+  securitySeenIds = new Set(d.findings.map(x => x.id));
+  securityPollTimer = setInterval(async () => {
+    try {
+      const latest = await api('/api/security/findings');
+      const fresh = latest.findings.filter(x => !securitySeenIds.has(x.id) && x.status === 'detected');
+      latest.findings.forEach(x => securitySeenIds.add(x.id));
+      if (fresh.length) {
+        alert('SENTINEL-X SECURITY ALERT: ' + fresh.map(x => x.title).join('; '));
+        await securityCenter();
+      }
+    } catch (_) { /* transient API loss: next poll retries */ }
+  }, 12000);
+  const active = d.findings.filter(x => x.status === 'detected');
+  const rows = d.findings.map(x => `<tr>
+    <td><b>${esc(x.title)}</b><small class="muted">${esc(x.category)} · ${x.simulated ? 'SIMULATED' : 'HOST AGENT'}</small></td>
+    <td><span class="pill">${esc(x.severity.toUpperCase())}</span></td>
+    <td>${x.status === 'cleared' ? '<span class="pill">CLEARED</span>' : '<span class="pill">DETECTED</span>'}</td>
+    <td>${esc(x.details)}</td>
+    <td>${x.simulated && x.status === 'detected' ? `<button class="btn primary" data-clear="${esc(x.id)}">Clear demo</button>` : '—'}</td>
+  </tr>`).join('');
+  $('#view').innerHTML = shell('Endpoint security center',
+    'Host findings reported by the optional Windows agent, plus a safe demonstration workflow.',
+    `<button class="btn primary" id="runDemo">＋ Generate sample threat</button> <button class="btn" id="refreshSec">↻ Refresh</button>`) +
+    `<div class="grid kpis">
+      <div class="panel kpi"><small>ACTIVE FINDINGS</small><strong>${fmt(d.active)}</strong><span>Requires review</span></div>
+      <div class="panel kpi"><small>CLEARED</small><strong>${fmt(d.cleared)}</strong><span>Recorded resolutions</span></div>
+      <div class="panel kpi"><small>SIMULATED</small><strong>${fmt(d.simulated)}</strong><span>Demo records only</span></div>
+    </div>
+    <div class="panel" style="margin-top:18px"><div class="panelhead"><h3>Detection and remediation log</h3><span class="muted">Newest first</span></div>
+    <div class="tablewrap"><table><thead><tr><th>Finding</th><th>Severity</th><th>Status</th><th>Details</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="5">No findings recorded. Generate a sample to demonstrate the workflow.</td></tr>'}</tbody></table></div></div>
+    <div class="panel" style="margin-top:18px"><h3>Real Windows endpoint monitoring</h3>
+      <p>This website runs in Docker and cannot directly inspect Windows processes, files, Defender or firewall state. The optional host agent reports observations to this API. Real findings are never marked cleared by the sample button.</p>
+      <p class="muted">For real remediation, use Microsoft Defender / Windows Security and verify with a fresh scan. This build does not silently delete files or change system settings.</p>
+    </div>`;
+  $('#runDemo')?.addEventListener('click', async () => {
+    try { const r = await api('/api/security/demo', {method:'POST'}); alert('ALERT: ' + r.message); await securityCenter(); }
+    catch(e) { alert(e.message); }
+  });
+  $('#refreshSec')?.addEventListener('click', securityCenter);
+  $$('[data-clear]').forEach(b => b.addEventListener('click', async () => {
+    try { const r = await api('/api/security/findings/' + encodeURIComponent(b.dataset.clear) + '/clear', {method:'POST'});
+      alert('CLEARED: ' + r.message); await securityCenter();
+    } catch(e) { alert(e.message); }
+  }));
+}
+
+async function route() {
+  if (securityPollTimer) { clearInterval(securityPollTimer); securityPollTimer = null; }
+  killCharts(); buildNav();
+  const { page, lab } = routeInfo(), v = $('#view'); v.className = 'content'; v.innerHTML = loading();
+  try {
+    if (lab && LABS[lab]) await labDetail(lab);
+    else if (page === 'labs') await labsIndex();
+    else if (page === 'threats') await threats();
+    else if (page === 'security') await securityCenter();
+    else if (page === 'assistant') await assistantPage();
+    else if (page === 'sources') await sources();
+    else if (page === 'admin') { if (!isAdmin()) throw Object.assign(new Error('Administrator access is required for this page.'), { status: 403 }); await adminPage(); }
+    else await overview();
+  } catch (e) { if (e.message !== 'Session expired') { v.className = 'content'; v.innerHTML = shell(e.status === 403 ? 'Access denied' : 'Data unavailable', 'This page could not be loaded.') + errBox(e.message, e.status !== 403); } }
+}
+const setCrumb = t => $('#crumb').textContent = t;
+
+/* ============================ overview ============================ */
+async function overview(days = 30, gran = 'day') {
+  setCrumb('OVERVIEW');
+  const d = await api('/api/overview?' + qs({ days, granularity: gran })), k = d.kpis, h = d.health;
+  const healthy = h.database === 'ok' && h.replica_primary !== false;
+  $('#view').innerHTML = shell('Security operations overview', 'Live metrics computed from the threat database, laboratory history and platform health.',
+    `<div class="toolbar"><select id="range"><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 365 days</option></select><select id="gran"><option value="day">Daily</option><option value="week">Weekly</option></select><button class="btn" id="refresh">↻ Refresh</button><button class="btn" id="exportSummary">⇩ Export summary</button></div>`) +
+    `<div class="grid kpis">
+      ${kpi('TOTAL THREAT RECORDS', fmt(k.total), `${fmt(k.in_range)} published in range`)}
+      ${kpi('HIGH SEVERITY', fmt(k.high), `+ ${fmt(k.critical)} critical`, '#ff647c22')}
+      ${kpi('MEDIUM SEVERITY', fmt(k.medium), 'Classified medium', '#ffbd6922')}
+      ${kpi('LOW SEVERITY', fmt(k.low), 'Classified low', '#55d6a222')}
+      ${kpi('INTELLIGENCE SOURCES', fmt(k.sources), 'Configured feeds')}
+      ${kpi('RECENT ACTIVITY (24H)', fmt(k.recent_24h), `${fmt(k.recent_7d)} in the last 7 days`)}
+      ${isAdmin() ? kpi('REGISTERED USERS', fmt(k.users), `${fmt(k.users_active)} active · ${fmt(k.failed_logins_24h)} failed logins (24h)`, '#a78bfa22') : kpi('YOUR ROLE', esc(me()?.role || 'user').toUpperCase(), esc(me()?.username || ''), '#a78bfa22')}
+      ${kpi('SYSTEM HEALTH', healthy ? 'Healthy' : 'Degraded', `Database ${esc(h.database)}${h.members_up ? ' · replicas ' + esc(h.members_up) : ''}`, healthy ? '#55d6a233' : '#ff647c33')}
+    </div>
+    <div class="grid charts">${chartPanel('Threat severity distribution', 'ALL RECORDS', 'cSev', 'tall')}${chartPanel('Threat categories', 'TOP 10', 'cCat', 'tall')}${chartPanel('Threat source distribution', 'TOP 10', 'cSrc', 'tall')}</div>
+    <div class="grid charts2">${chartPanel(gran === 'week' ? 'Weekly threat trend' : 'Daily threat trend', 'BY PUBLISH DATE · SELECTED RANGE', 'cTime')}${chartPanel('System activity', 'EXPERIMENT RUNS', 'cAct')}</div>
+    ${isAdmin() ? `<div class="grid">${chartPanel('Login activity', 'SUCCESSFUL VS FAILED', 'cLogin')}</div>` : ''}
+    <section class="panel"><div class="panelhead"><h3>Data provenance</h3></div><p class="sub" style="margin:0">${Object.entries(d.origins).map(([o, n]) => pill(o.includes('demo') ? 'warn' : 'ok', `${o}: ${fmt(n)}`)).join(' ') || 'No records.'} Records labelled demo are synthetic training data, and feed records are unverified until independently confirmed.</p></section>`;
+  $('#range').value = days; $('#gran').value = gran;
+  const re = () => overview(Number($('#range').value), $('#gran').value);
+  $('#range').onchange = $('#gran').onchange = re; $('#refresh').onclick = re;
+  $('#exportSummary').onclick = () => { const b = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' }), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'sentinelx-overview.json'; a.click(); URL.revokeObjectURL(a.href); };
+  redraw = () => {
+    charts.forEach(c => c.destroy()); charts = [];
+    drawChart('cSev', 'doughnut', d.severity.map(x => x.label), [{ data: d.severity.map(x => x.count), backgroundColor: d.severity.map(x => SEVCOL[x.label] || '#52627d'), borderWidth: 0 }]);
+    drawChart('cCat', 'bar', d.categories.map(x => x.label), [{ label: 'Records', data: d.categories.map(x => x.count), backgroundColor: '#38d6c3', borderRadius: 5 }]);
+    drawChart('cSrc', 'doughnut', d.sources.map(x => x.label), [{ data: d.sources.map(x => x.count), backgroundColor: PAL, borderWidth: 0 }]);
+    drawChart('cTime', 'line', d.timeline.map(x => x.bucket), [{ label: 'Threat records', data: d.timeline.map(x => x.count), borderColor: '#38d6c3', backgroundColor: '#38d6c333', fill: true, tension: .3, pointRadius: 2 }]);
+    drawChart('cAct', 'bar', d.system_activity.map(x => x.bucket), [{ label: 'Runs', data: d.system_activity.map(x => x.count), backgroundColor: '#5c9dff', borderRadius: 4 }]);
+    if (d.login_activity) drawChart('cLogin', 'bar', d.login_activity.map(x => x.bucket), [{ label: 'Successful', data: d.login_activity.map(x => x.success), backgroundColor: '#55d6a2' }, { label: 'Failed', data: d.login_activity.map(x => x.failed), backgroundColor: '#ff647c' }], { x: { stacked: true }, y: { stacked: true } });
+  };
+  redraw();
+}
+
+/* ============================ threat intelligence ============================ */
+const tState = { q: '', severity: '', type: '', source: '', origin: '', date_from: '', date_to: '', sort: 'published_at', order: 'desc', skip: 0, limit: 25 };
+async function threats() {
+  setCrumb('THREAT INTELLIGENCE');
+  const f = await api('/api/threats/facets'), opt = (arr, cur, all) => `<option value="">${all}</option>` + arr.map(x => { const v = x.id ?? x, l = x.name ?? x; return `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(l)}</option>`; }).join('');
+  $('#view').innerHTML = shell('Threat intelligence', 'Search, filter and review threat records stored in MongoDB. Feed records are unverified until independently confirmed.') +
+    `<section class="panel"><div class="toolbar">
+      <input id="tq" class="grow" placeholder="Search title, description or IOC" value="${esc(tState.q)}">
+      <select id="tsev">${opt(f.severities, tState.severity, 'All severities')}</select><select id="ttype">${opt(f.types, tState.type, 'All categories')}</select>
+      <select id="tsrc">${opt(f.sources, tState.source, 'All sources')}</select><select id="torg">${opt(f.origins, tState.origin, 'All origins')}</select>
+      <input id="tfrom" type="date" value="${tState.date_from}" title="Published from"><input id="tto" type="date" value="${tState.date_to}" title="Published to">
+      <select id="tsort"><option value="published_at">Sort: published</option><option value="title">Sort: title</option><option value="type">Sort: category</option><option value="severity">Sort: severity</option></select>
+      <select id="tord"><option value="desc">Newest / Z–A</option><option value="asc">Oldest / A–Z</option></select>
+      <button class="btn primary" id="tgo">Search</button><button class="btn" id="treset">Reset</button><button class="btn" id="trefresh">↻ Refresh</button><button class="btn" id="texp">⇩ CSV</button></div>
+      <div id="tres" style="margin-top:12px"></div></section>`;
+  $('#tsort').value = tState.sort; $('#tord').value = tState.order;
+  const read = () => Object.assign(tState, { q: $('#tq').value.trim(), severity: $('#tsev').value, type: $('#ttype').value, source: $('#tsrc').value, origin: $('#torg').value, date_from: $('#tfrom').value, date_to: $('#tto').value, sort: $('#tsort').value, order: $('#tord').value });
+  const filt = () => { const { skip, limit, ...rest } = tState; return rest; };
+  $('#tgo').onclick = () => { read(); tState.skip = 0; loadThreats(); };
+  $('#tq').onkeydown = e => { if (e.key === 'Enter') $('#tgo').click(); };
+  [...['tsev', 'ttype', 'tsrc', 'torg', 'tfrom', 'tto', 'tsort', 'tord']].forEach(i => $('#' + i).onchange = () => $('#tgo').click());
+  $('#trefresh').onclick = loadThreats;
+  $('#treset').onclick = () => { Object.assign(tState, { q: '', severity: '', type: '', source: '', origin: '', date_from: '', date_to: '', sort: 'published_at', order: 'desc', skip: 0 }); threats(); };
+  $('#texp').onclick = () => download('/api/export/threats.csv?' + qs(filt()), 'sentinelx-threats.csv');
+  await loadThreats();
+}
+async function loadThreats() {
+  const box = $('#tres'); box.innerHTML = loading('Loading threat records…');
+  try {
+    const { skip, limit, ...rest } = tState, d = await api('/api/threats?' + qs({ ...rest, skip, limit }));
+    box.innerHTML = `<div class="tablewrap"><table><thead><tr><th>Title</th><th>Severity</th><th>Category</th><th>Source</th><th>Origin</th><th>Published</th></tr></thead><tbody>${d.results.map(x => `<tr class="click" data-id="${esc(x.id)}"><td class="trunc" title="${esc(x.title)}">${esc(x.title || 'Untitled')}</td><td>${sevPill(x.classification.severity)}</td><td>${esc(x.classification.type || 'Unclassified')}</td><td>${esc(x.source || '')}</td><td>${pill(String(x.origin).includes('demo') ? 'warn' : 'info', x.origin)}</td><td>${fdate(x.published_at)}</td></tr>`).join('') || '<tr><td colspan="6"><div class="empty" style="padding:30px">No threat records match these filters.</div></td></tr>'}</tbody></table></div>${pager(d.total, d.skip, d.limit)}`;
+    $$('tbody tr[data-id]', box).forEach(tr => tr.onclick = () => threatDrawer(tr.dataset.id));
+    $$('[data-page]', box).forEach(b => b.onclick = () => { tState.skip = Math.max(0, tState.skip + (b.dataset.page === 'next' ? 1 : -1) * tState.limit); loadThreats(); });
+  } catch (e) { box.innerHTML = errBox(e.message, false); }
+}
+function drawer(html) {
+  const w = document.createElement('div'); w.className = 'drawerwrap'; w.innerHTML = `<aside class="drawer"><div style="text-align:right"><button class="btn sm" data-close>Close ✕</button></div>${html}</aside>`;
+  w.onclick = e => { if (e.target === w || e.target.closest('[data-close]')) w.remove(); }; document.body.append(w);
+  const k = e => { if (e.key === 'Escape') { w.remove(); removeEventListener('keydown', k); } }; addEventListener('keydown', k); return w;
+}
+async function threatDrawer(id) {
+  const w = drawer(loading());
+  try {
+    const x = await api('/api/threats/' + encodeURIComponent(id)), safeUrl = /^https?:\/\//.test(x.url || '') ? x.url : '';
+    $('.drawer', w).insertAdjacentHTML('beforeend', `<h2>${esc(x.title)}</h2><div class="toolbar" style="margin:8px 0 14px">${sevPill(x.classification.severity)}${pill('', x.classification.type || 'Unclassified')}${pill(String(x.origin).includes('demo') ? 'warn' : 'info', x.origin)}${pill('', x.verification)}</div>
+      <div class="kv"><div><b>Source</b>${esc(x.source || '—')}</div><div><b>Published</b>${fdate(x.published_at)}</div>${x.platform ? `<div><b>Platform</b>${esc(x.platform)}</div>` : ''}<div><b>URL</b>${safeUrl ? `<a href="${esc(safeUrl)}" target="_blank" rel="noopener noreferrer">${esc(safeUrl)}</a>` : esc(x.url || '—')}</div></div>
+      <h3 style="margin:18px 0 6px">Description</h3><p style="white-space:pre-wrap;overflow-wrap:anywhere;margin:0">${esc(x.description || 'No description stored.')}</p>
+      <h3 style="margin:18px 0 6px">Indicators of compromise (${x.iocs.length})</h3>${x.iocs.length ? `<div class="tablewrap"><table style="min-width:0"><tbody>${x.iocs.map(i => `<tr><td>${esc(i.type || 'ioc')}</td><td style="overflow-wrap:anywhere">${esc(i.value ?? JSON.stringify(i))}</td></tr>`).join('')}</tbody></table></div>` : '<p class="sub">No indicators extracted from this record.</p>'}
+      <p class="sub" style="margin-top:16px">${esc(x.verification_detail?.note || 'Retrieval from a feed does not independently confirm that an indicator is malicious.')}</p>`);
+    $('.loading', w)?.remove();
+  } catch (e) { $('.drawer', w).insertAdjacentHTML('beforeend', errBox(e.message, false)); $('.loading', w)?.remove(); }
+}
+
+/* ============================ AI assistant ============================ */
+function rich(text) {
+  const inline = h => h.replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/\n/g, '<br>');
+  return String(text ?? '').split('```').map((p, i) => {
+    if (i % 2 === 0) return inline(esc(p));
+    const nl = p.indexOf('\n'); let lang = '', code = p;
+    if (nl >= 0 && /^[\w+#.-]*$/.test(p.slice(0, nl).trim())) { lang = p.slice(0, nl).trim(); code = p.slice(nl + 1); }
+    return `<div class="codeblock"><div class="codehead"><span>${esc(lang || 'code')}</span><button class="btn sm" data-copy>Copy</button></div><pre><code>${esc(code.replace(/\n$/, ''))}</code></pre></div>`;
+  }).join('');
+}
+function mountChat(root, { lab = null, compact = false, onLab = null } = {}) {
+  const GREET = `Hello, I'm Boss. I can explain Labs 1–4 and 7–18, MongoDB and Docker commands, help debug errors, and summarise threat data. Call me by name, e.g. “Boss, latest 5 threats”. Common definitions and live-data questions (health, latest threats, lab status) answer instantly; other answers stream as they are generated. I only generate instructions unless a registered tool actually runs.${isAdmin() ? ' Try “run lab 8”.' : ''}`;
+  const SUGGEST = ['What is a replica set?', 'Boss, show the latest 5 threats', 'Check system health', 'Explain Lab 8 step by step', ...(isAdmin() ? ['Run lab 8'] : [])];
+  const lastKey = () => `sx-boss-last:${me()?.username}:${compact ? lab : 'all'}`;
+  root.innerHTML = `<div class="chat chatx ${compact ? 'compact' : ''}">
+    <aside class="convpane" id="cvPane"><button class="btn primary" id="cvNew">＋ New chat</button><input id="cvSearch" type="search" placeholder="Search chats" aria-label="Search chats"><div class="convitems" id="cvItems"></div><button class="btn sm danger" id="cvAll">🗑 Delete all chats</button></aside>
+    <div class="chatmain"><div class="chathead"><div class="toolbar"><button class="btn sm" id="cvToggle" title="Show or hide saved chats">☰ Chats</button><span class="pill" id="aiBadge">CHECKING OLLAMA…</span><span class="sub" id="cvCtx"></span></div>
+      <div class="toolbar"><b class="convtitle" id="cvTitle">New chat</b><button class="btn sm" id="cvRename" title="Rename chat" hidden>✎ Rename</button><button class="btn sm" id="cvExport" title="Download this chat" hidden>⇩ Export</button><button class="btn sm danger" id="cvDel" title="Delete this chat" hidden>🗑 Delete</button></div></div>
+      <div class="messages" id="aiMsgs" aria-live="polite"></div>
+      <div class="composer"><textarea id="aiIn" rows="1" placeholder="Ask Boss a question or paste an error…  (Enter to send, Shift+Enter for a new line)"></textarea><button class="btn" id="aiMic" title="Voice input" hidden>🎤</button><button class="btn primary" id="aiSend">Send</button></div></div></div>`;
+  const wrap = $('.chat', root), box = $('#aiMsgs', root), input = $('#aiIn', root), send = $('#aiSend', root), items = $('#cvItems', root);
+  let cid = null, convs = [], turns = [], exchanges = [], ctl = null, curLab = lab, curTitle = 'New chat';
+  const ctxLabel = () => { $('#cvCtx', root).textContent = curLab ? 'Context: Lab ' + curLab : 'Context: general'; };
+  const setHeader = () => { $('#cvTitle', root).textContent = curTitle; ['cvRename', 'cvExport', 'cvDel'].forEach(i => $('#' + i, root).hidden = !cid); ctxLabel(); };
+  const markLast = () => { $$('.row.islast', box).forEach(r => r.classList.remove('islast')); [...box.querySelectorAll('.row[data-ex]')].slice(-2).forEach(r => r.classList.add('islast')); };
+  const actionsFor = row => {
+    if (row.querySelector('.msgacts')) return;
+    const user = row.classList.contains('user'), d = document.createElement('div'); d.className = 'msgacts';
+    d.innerHTML = '<button class="btn sm" data-act="copy">⧉ Copy</button>' + (user ? '<button class="btn sm act-last" data-act="edit">✎ Edit</button>' : '<button class="btn sm act-last" data-act="regen">↻ Regenerate</button>');
+    row.querySelector('.bubble').append(d);
+  };
+  const add = (role, html, tag = '', raw = null) => {
+    const r = document.createElement('div'); r.className = 'row ' + (role === 'user' ? 'user' : 'bot'); r._raw = raw;
+    r.innerHTML = `<div class="avatar">${role === 'user' ? esc((me()?.username || 'U')[0].toUpperCase()) : 'B'}</div><div class="bubble">${tag}${html}</div>`;
+    box.append(r); box.scrollTop = box.scrollHeight; return r;
+  };
+  function emptyState() {
+    box.innerHTML = ''; turns = []; exchanges = [];
+    const g = add('bot', esc(GREET)); g.dataset.greet = '1';
+    g.querySelector('.bubble').insertAdjacentHTML('beforeend', `<div class="chips">${SUGGEST.map(s => `<button class="chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join('')}</div>`);
+  }
+  function newChat() { if (ctl) ctl.abort(); cid = null; curTitle = 'New chat'; sessionStorage.removeItem(lastKey()); emptyState(); setHeader(); renderList(); input.focus(); }
+  function renderConv(m) {
+    const u = add('user', esc(m.message), '', m.message), b = add('bot', rich(m.reply), '', m.reply);
+    u.dataset.ex = b.dataset.ex = '1'; actionsFor(u); actionsFor(b);
+    exchanges.push({ userRow: u, botRow: b, msg: m.message, saved: true }); turns.push({ role: 'user', content: m.message }, { role: 'assistant', content: m.reply });
+  }
+  async function openConv(id) {
+    if (ctl) ctl.abort();
+    box.innerHTML = loading('Opening chat…');
+    try {
+      const d = await api('/api/conversations/' + encodeURIComponent(id));
+      cid = d.id; curTitle = d.title; curLab = d.lab || (compact ? lab : ''); box.innerHTML = ''; turns = []; exchanges = [];
+      if (!d.messages.length) emptyState(); else d.messages.forEach(renderConv);
+      sessionStorage.setItem(lastKey(), cid); if (onLab && !compact) onLab(d.lab || ''); setHeader(); markLast(); renderList(); box.scrollTop = box.scrollHeight;
+      wrap.classList.remove('showlist');
+    } catch (e) { sessionStorage.removeItem(lastKey()); emptyState(); cid = null; setHeader(); }
+  }
+  const bucket = c => {
+    if (c.pinned) return '📌 Pinned';
+    const d = parseDate(c.updated_at); if (!d) return 'Older';
+    const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
+    return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 8 ? 'Previous 7 days' : 'Older';
+  };
+  function renderList() {
+    if (!convs.length) { items.innerHTML = `<div class="sub" style="padding:10px">${$('#cvSearch', root).value ? 'No chats match your search.' : 'No saved chats yet. Your conversations with Boss appear here.'}</div>`; return; }
+    let html = '', cur = '';
+    convs.forEach(c => {
+      const b = bucket(c); if (b !== cur) { html += `<div class="convgroup">${esc(b)}</div>`; cur = b; }
+      html += `<div class="convitem ${c.id === cid ? 'active' : ''}" data-id="${esc(c.id)}" tabindex="0"><span class="ctitle" title="${esc(c.title)}">${esc(c.title)}</span><span class="cacts"><button data-pin="${esc(c.id)}" title="${c.pinned ? 'Unpin' : 'Pin'}">${c.pinned ? '★' : '☆'}</button><button data-ren="${esc(c.id)}" title="Rename">✎</button><button data-del="${esc(c.id)}" title="Delete">🗑</button></span></div>`;
+    });
+    items.innerHTML = html;
+  }
+  async function loadList() {
+    try { convs = (await api('/api/conversations?' + qs({ q: $('#cvSearch', root).value.trim(), lab: compact ? lab : '' }))).conversations; renderList(); }
+    catch (e) { if (e.message !== 'Session expired') items.innerHTML = `<div class="sub" style="padding:10px">Could not load chats: ${esc(e.message)}</div>`; }
+  }
+  async function rename(id) {
+    const c = convs.find(x => x.id === id) || { title: curTitle }, t = prompt('Rename chat', c.title); if (t === null || !t.trim()) return;
+    try { const r = await api('/api/conversations/' + encodeURIComponent(id), { method: 'PATCH', json: { title: t.trim() } }); if (id === cid) { curTitle = r.title; setHeader(); } loadList(); } catch (e) { alert(e.message); }
+  }
+  async function removeConv(id) {
+    const c = convs.find(x => x.id === id), name = c ? c.title : curTitle;
+    if (!confirm(`Delete the chat "${name}"? This cannot be undone.`)) return;
+    try { await api('/api/conversations/' + encodeURIComponent(id), { method: 'DELETE' }); } catch (e) { return alert(e.message); }
+    if (id === cid) newChat(); loadList();
+  }
+  items.onclick = e => {
+    const pin = e.target.closest('[data-pin]'), ren = e.target.closest('[data-ren]'), del = e.target.closest('[data-del]'), it = e.target.closest('.convitem');
+    if (pin) { const c = convs.find(x => x.id === pin.dataset.pin); api('/api/conversations/' + encodeURIComponent(c.id), { method: 'PATCH', json: { pinned: !c.pinned } }).then(loadList).catch(er => alert(er.message)); }
+    else if (ren) rename(ren.dataset.ren); else if (del) removeConv(del.dataset.del); else if (it) openConv(it.dataset.id);
+  };
+  items.onkeydown = e => { if (e.key === 'Enter' && e.target.classList.contains('convitem')) openConv(e.target.dataset.id); };
+  let st; $('#cvSearch', root).oninput = () => { clearTimeout(st); st = setTimeout(loadList, 250); };
+  $('#cvNew', root).onclick = () => { newChat(); wrap.classList.remove('showlist'); };
+  $('#cvToggle', root).onclick = () => wrap.classList.toggle('showlist');
+  $('#cvRename', root).onclick = () => cid && rename(cid);
+  $('#cvDel', root).onclick = () => cid && removeConv(cid);
+  $('#cvExport', root).onclick = () => cid && download(`/api/conversations/${encodeURIComponent(cid)}/export`, `boss-chat-${curTitle.replace(/[^\w.-]+/g, '_').slice(0, 40) || 'chat'}.md`);
+  $('#cvAll', root).onclick = async () => {
+    if (!confirm('Delete ALL your saved chats' + (compact ? ` for Lab ${lab}` : '') + '? This cannot be undone.')) return;
+    try { await api('/api/conversations' + (compact ? '?lab=' + encodeURIComponent(lab) : ''), { method: 'DELETE' }); } catch (e) { return alert(e.message); }
+    newChat(); loadList();
+  };
+  api('/api/assistant/status').then(s => { const b = $('#aiBadge', root); b.className = 'pill ' + (s.ok && s.model_available ? 'ok' : s.ok ? 'warn' : 'bad'); b.textContent = s.ok ? (s.model_available ? 'BOSS READY · ' + s.model : 'MODEL MISSING · ' + s.model) : 'OLLAMA OFFLINE'; b.title = s.message; }).catch(() => { $('#aiBadge', root).textContent = 'STATUS UNKNOWN'; });
+  const grow = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; };
+  input.oninput = grow;
+  const tagFor = ev => ev.queued ? `<span class="pill warn tag">LAB RUN QUEUED</span><br><a class="btn sm" href="/console?lab=${encodeURIComponent(String(ev.lab || '').split('.')[0])}" data-nav>Open live lab console</a><br>` : ev.executed ? '<span class="pill ok tag">TOOL EXECUTED</span><br>'
+    : ev.confirmation_required ? '<span class="pill warn tag">CONFIRMATION REQUIRED · NOT RUN</span><br>'
+    : ev.error ? '<span class="pill bad tag">ERROR</span><br>'
+    : ev.mode === 'knowledge' ? '<span class="pill info tag">⚡ INSTANT · KNOWLEDGE BASE</span><br>'
+    : (ev.mode === 'tool' || ev.mode === 'database') ? '<span class="pill info tag">⚡ INSTANT · LIVE DATA TOOL</span><br>' : '';
+  async function submit(override) {
+    if (ctl) { ctl.abort(); return; }                       // while streaming, the button works as Stop
+    const msg = (typeof override === 'string' ? override : input.value).trim(); if (!msg) return;
+    input.value = ''; grow(); $$('.chips', box).forEach(c => c.remove());
+    const urow = add('user', esc(msg), '', msg), brow = add('bot', '<span class="typing"><i></i><i></i><i></i></span>'), bub = brow.querySelector('.bubble');
+    urow.dataset.ex = brow.dataset.ex = '1';
+    const ex = { userRow: urow, botRow: brow, msg, saved: false }; exchanges.push(ex);
+    ctl = new AbortController(); send.textContent = '■ Stop';
+    const t0 = performance.now(); let acc = '', first = null, tag = '', info = '', stopped = false;
+    const paint = () => { bub.innerHTML = tag + rich(acc); box.scrollTop = box.scrollHeight; };
+    try {
+      const r = await fetch('/api/assistant/stream', { method: 'POST', signal: ctl.signal,
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + localStorage.getItem(TOKEN) },
+        body: JSON.stringify({ message: msg, lab: curLab || null, conversation_id: cid, history: turns.slice(-6) }) });
+      if (r.status === 401) { endSession('Your session has expired. Please sign in again.'); return; }
+      if (!r.ok) { let d = {}; try { d = await r.json(); } catch { } if (r.status === 404 && cid) { cid = null; sessionStorage.removeItem(lastKey()); } throw new Error(d.detail || r.statusText); }
+      const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+      for (; ;) {
+        const { value, done } = await rd.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i; while ((i = buf.indexOf('\n\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2); if (!line.startsWith('data:')) continue;
+          const ev = JSON.parse(line.slice(5));
+          if (ev.type === 'meta') { cid = ev.conversation_id; sessionStorage.setItem(lastKey(), cid); }
+          else if (ev.type === 'token') { if (first === null) first = Math.round(performance.now() - t0); acc += ev.text; paint(); }
+          else if (ev.type === 'final') { first = Math.round(performance.now() - t0); acc = ev.reply; tag = tagFor(ev); paint(); }
+          else if (ev.type === 'error') { tag = '<span class="pill bad tag">ERROR</span><br>'; acc = ev.message; paint(); }
+          else if (ev.type === 'done') { info = ev.cached ? ' · cached' : ev.instant ? ' · instant' : ''; }
+        }
+      }
+    } catch (e) { if (e.name === 'AbortError') stopped = true; else { tag = '<span class="pill bad tag">ERROR</span><br>'; acc = e.message; paint(); } }
+    const failed = tag.includes('ERROR');
+    if (acc && !failed) { turns.push({ role: 'user', content: msg }, { role: 'assistant', content: acc }); ex.saved = true; }
+    brow._raw = acc;
+    const total = Math.round(performance.now() - t0);
+    if (acc) bub.insertAdjacentHTML('beforeend', `<div class="sub" style="margin-top:8px">⚡ ${first ?? total} ms to first response · ${total} ms total${info}${stopped ? ' · stopped' : ''}</div>`);
+    else if (stopped) bub.innerHTML = '<span class="sub">Stopped.</span>';
+    actionsFor(urow); actionsFor(brow); markLast();
+    ctl = null; send.textContent = 'Send'; input.focus();
+    if (cid) { setTimeout(async () => { await loadList(); const c = convs.find(x => x.id === cid); if (c) { curTitle = c.title; setHeader(); } }, 400); }
+  }
+  async function undoLast() {                                  // shared by Regenerate and Edit
+    const ex = exchanges[exchanges.length - 1]; if (!ex || ctl) return null;
+    if (ex.saved && cid) { try { await api(`/api/conversations/${encodeURIComponent(cid)}/messages/last?` + qs({ expect: ex.msg }), { method: 'DELETE' }); } catch (e) { alert(e.message); return null; } turns.splice(-2); }
+    ex.userRow.remove(); ex.botRow.remove(); exchanges.pop(); markLast(); return ex.msg;
+  }
+  box.onclick = async e => {
+    const chip = e.target.closest('[data-suggest]'); if (chip) { input.value = chip.dataset.suggest; submit(); return; }
+    const b = e.target.closest('[data-act]'); if (!b) return; const row = b.closest('.row');
+    if (b.dataset.act === 'copy') copyText(row._raw ?? row.querySelector('.bubble').innerText, b);
+    else if (b.dataset.act === 'regen') { const m = await undoLast(); if (m) submit(m); }
+    else if (b.dataset.act === 'edit') { const m = await undoLast(); if (m) { input.value = m; grow(); input.focus(); } }
+  };
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition, mic = $('#aiMic', root);
+  if (SR) {
+    mic.hidden = false; let rec = null, base = '';
+    mic.onclick = () => {
+      if (rec) { rec.stop(); return; }
+      rec = new SR(); rec.lang = navigator.language || 'en-US'; rec.interimResults = true; base = input.value ? input.value + ' ' : '';
+      rec.onresult = ev => { input.value = base + [...ev.results].map(r => r[0].transcript).join(''); grow(); };
+      rec.onend = () => { rec = null; mic.textContent = '🎤'; mic.classList.remove('rec'); input.focus(); };
+      rec.onerror = () => { };
+      mic.textContent = '■'; mic.classList.add('rec'); rec.start();
+    };
+  }
+  send.onclick = () => submit(); input.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } };
+  emptyState(); setHeader();
+  loadList().then(() => { const last = sessionStorage.getItem(lastKey()); if (last) openConv(last); });
+  return { setLab(l) { curLab = l || null; newChat(); } };
+}
+async function assistantPage() {
+  setCrumb('BOSS'); const v = $('#view'); v.className = 'content fit';
+  v.innerHTML = `<div class="toolbar" style="margin-bottom:12px;justify-content:space-between"><div><div class="eyebrow">SENTINEL-X · AI ASSISTANT</div><h1 style="margin:2px 0;font-size:24px">Boss</h1></div><label class="sub">Lab context <select id="aiLab"><option value="">General / overview</option>${Object.keys(LABS).map(n => `<option value="${n}">Lab ${n} · ${esc(LABS[n][0])}</option>`).join('')}</select></label></div><div id="chatRoot" style="flex:1;min-height:0"></div>`;
+  const chat = mountChat($('#chatRoot'), { lab: null, onLab: l => { $('#aiLab').value = l; } });
+  $('#aiLab').onchange = () => chat.setLab($('#aiLab').value);
+}
+
+/* ============================ labs ============================ */
+const labPill = s => { const [c, t] = STATUS[s] || ['', s]; return pill(c, t); };
+async function labsIndex() {
+  setCrumb('EXPERIMENTS'); const d = await api('/api/labs');
+  $('#view').innerHTML = shell('Experiments · Labs 1–18', 'Run registered lab workflows, inspect source files and follow live execution output.', `<button class="btn" onclick="download('/api/dashboard/export/experiments.csv','sentinelx-lab-runs.csv')">⇩ Export lab history</button>`) +
+    `<div class="grid labgrid">${d.labs.map(l => `<a class="panel labcard" href="/console?lab=${l.lab}" data-nav><span class="labnum">LAB ${String(l.lab).padStart(2, '0')}</span><h3>${esc(LABS[l.lab][0])}</h3><p>${esc(LABS[l.lab][1])}</p><div class="labmeta">${labPill(l.status)}<span>${l.experiments.length} runnable · ${l.files.length} files</span></div></a>`).join('')}</div>`;
+}
+async function labDetail(n) {
+  setCrumb('LAB ' + n); const [d, runs] = await Promise.all([api('/api/labs/' + n), api('/api/dashboard/experiments')]);
+  const last = Object.fromEntries(runs.experiments.map(e => [e.id, e.last])), admin = isAdmin();
+  const steps = [...d.experiments.map(e => `Run <b>${esc(e.lab)} · ${esc(e.title)}</b> from this page${e.warning ? ' (confirmation required)' : ''}.`), ...d.manual_steps.map(m => `Prerequisite: <b>${esc(m.lab)} · ${esc(m.title)}</b> — <code>${esc(m.cmd)}</code>`)];
+  const k8sPanel = [16, 18].includes(Number(n)) ? `<section class="panel" id="k8sWorkflowPanel" style="margin:14px 0"><div class="panelhead"><div><h3>☸ Kubernetes · Lab16 → Lab18 workflow</h3><span class="sub">Runs isolated Lab16 seeding first; Lab18 starts only after Lab16 succeeds.</span></div><span class="pill" id="k8sState">NOT STARTED</span></div><div class="grid cols2"><div class="kv"><div><b>Lab16</b><span id="k8sLab16">Waiting · MongoDB, Cassandra, Neo4j · 300,000 records</span></div><div><b>Lab18</b><span id="k8sLab18">Waiting · 10-run median benchmark</span></div><div><b>Execution mode</b>Kubernetes Jobs · unique run IDs · persistent MongoDB history</div></div><div><div class="toolbar"><button class="btn primary" id="k8sStart" ${admin ? '' : 'disabled title="Administrator only"'}>▶ Start Lab16 → Lab18</button><button class="btn" id="k8sReport" disabled>⇩ Benchmark report</button></div><p class="sub" id="k8sMeta">${admin ? 'Only administrators can start this workflow.' : 'Administrator permission required.'}</p></div></div><pre class="output" id="k8sOut" style="max-height:340px;margin-top:12px">No Kubernetes workflow selected. Start a run to stream Job status and logs here.</pre></section>` : '';
+  $('#view').innerHTML = shell(`Lab ${n} · ${LABS[n][0]}`, LABS[n][1], `<div>${labPill(d.status)}</div>`) + k8sPanel +
+    `<div class="grid cols2"><section class="panel"><div class="panelhead"><h3>Objective & requirements</h3></div>
+      <div class="kv"><div><b>Objective</b>${esc(LABS[n][1])}.</div><div><b>Requires</b>${d.uses.map(u => pill('', u)).join(' ') || '—'}</div><div><b>Feeds into</b>${d.feeds.map(u => pill('', 'Lab ' + u)).join(' ') || '—'}</div><div><b>Last run</b>${d.last_run ? fdate(d.last_run) : 'Never executed from this platform'}</div></div></section>
+      <section class="panel"><div class="panelhead"><h3>Procedure</h3></div>${steps.length ? `<ol class="steps">${steps.map(s => `<li>${s}</li>`).join('')}</ol>` : '<p class="sub">No registered runner or manual step exists for this lab. Review the script files below.</p>'}</section></div>
+    <div class="grid labdetail"><section class="panel"><div class="panelhead"><h3>Experiments</h3><span class="sub">${admin ? 'Administrators can run registered experiments' : 'Running experiments requires an administrator'}</span></div><div class="runlist">${d.experiments.map(e => { const l = last[e.id]; return `<div class="runitem"><div><b>${esc(e.lab)} · ${esc(e.title)}</b><small>${l ? `${esc(l.status)} · ${esc(l.seconds)}s · ${fdate(l.ts)}` : 'Not executed yet'}</small>${e.warning ? `<small style="color:var(--amber)">⚠ ${esc(e.warning)}</small>` : ''}${e.note ? `<small>${esc(e.note)}</small>` : ''}</div><div class="toolbar"><button class="btn sm" data-out="${esc(e.id)}" ${l ? '' : 'disabled'}>Output</button><button class="btn sm primary" data-run="${esc(e.id)}" ${admin ? '' : 'disabled title="Administrator only"'}>Run</button></div></div>`; }).join('')}${d.manual_steps.map(m => `<div class="runitem"><div><b>${esc(m.lab)} · ${esc(m.title)}</b><small>Infrastructure prerequisite / host-level operation</small><code>${esc(m.cmd)}</code></div><button class="btn sm" data-cp="${esc(m.cmd)}">Copy</button></div>`).join('') || (d.experiments.length ? '' : '<p class="sub">No runnable experiment registered.</p>')}</div></section>
+      <section class="panel"><div class="panelhead"><h3>Live execution console</h3><span class="pill" id="runState">IDLE</span><button class="btn sm" id="dlOut">⇩ Download</button></div><pre class="output" id="out">Select a registered experiment. Live output will remain here until another run is selected.</pre></section></div>
+    <div class="grid cols2"><section class="panel"><div class="panelhead"><h3>Scripts & code</h3><span class="sub">READ-ONLY VIEW OF labs/lab${String(n).padStart(2, '0')}</span></div><div class="toolbar">${d.files.map(f => `<button class="btn sm" data-file="${esc(f)}">${esc(f)}</button>`).join('') || '<span class="sub">No script files found.</span>'}</div><pre class="codeview hidden" id="code" style="margin-top:10px"></pre></section>
+      <section class="panel"><div class="panelhead"><h3>Execution time</h3><span class="sub">LAST RUN (S)</span></div><div class="chartbox"><canvas id="labC"></canvas><div class="empty hidden" id="labC-empty">No runs recorded yet.</div></div></section></div>
+    <section class="panel"><div class="panelhead"><h3>Boss · Lab assistant</h3><span class="sub">CONTEXT: LAB ${n}</span></div><div id="chatRoot"></div></section>`;
+  const out = $('#out');
+  if ([16, 18].includes(Number(n)) && $('#k8sWorkflowPanel')) {
+    const kState = $('#k8sState'), kOut = $('#k8sOut'), kStart = $('#k8sStart'), kReport = $('#k8sReport');
+    let kTimer = null, kPolling = false, activeWorkflow = null;
+    const setK8sStatus = j => {
+      const status = j?.status || 'queued';
+      kState.textContent = String(status).toUpperCase();
+      kState.className = 'pill ' + (status === 'passed' ? 'ok' : status === 'failed' ? 'bad' : 'warn');
+      const k = j?.kubernetes || {};
+      const s16 = k.lab16?.status || (status === 'queued' ? 'queued' : 'waiting');
+      const s18 = k.lab18?.status || (s16 === 'complete' ? 'starting' : 'waiting for Lab16');
+      $('#k8sLab16').textContent = `${String(s16).toUpperCase()} · ${k.lab16?.job_name || 'Kubernetes Job'}`;
+      $('#k8sLab18').textContent = `${String(s18).toUpperCase()} · ${k.lab18?.job_name || 'Starts after Lab16 succeeds'}`;
+      $('#k8sMeta').textContent = `Run ${j?.job_id || ''} · ${j?.seconds || 0}s · Started ${j?.created_at ? fdate(j.created_at) : '—'}`;
+      kStart.disabled = !isAdmin() || ['queued', 'running'].includes(status);
+      kStart.textContent = ['queued', 'running'].includes(status) ? 'Workflow running…' : '▶ Start Lab16 → Lab18';
+      kReport.disabled = status !== 'passed';
+    };
+    const pollK8s = async id => {
+      if (kPolling || !id) return;
+      kPolling = true;
+      try {
+        const j = await api('/api/dashboard/k8s/workflow/' + encodeURIComponent(id));
+        activeWorkflow = j.job_id; setK8sStatus(j); kOut.textContent = j.output || '(Waiting for Kubernetes output…)'; kOut.scrollTop = kOut.scrollHeight;
+        if (['passed', 'failed'].includes(j.status)) { if (kTimer) clearInterval(kTimer); kTimer = null; }
+      } catch (e) { kOut.textContent += `\n[Workflow monitor error] ${e.message}`; if (kTimer) clearInterval(kTimer); kTimer = null; }
+      finally { kPolling = false; }
+    };
+    const watchK8s = async id => { activeWorkflow = id; await pollK8s(id); if (kTimer) clearInterval(kTimer); kTimer = setInterval(() => pollK8s(id), 1800); };
+    kStart.onclick = async () => {
+      if (!confirm('Start the Kubernetes Lab16 → Lab18 workflow? Lab16 will seed the isolated datasets and Lab18 will run only after Lab16 succeeds.')) return;
+      kStart.disabled = true; kState.textContent = 'QUEUED'; kState.className = 'pill warn'; kOut.textContent = '[SENTINEL-X] Submitting Kubernetes workflow…\n';
+      try { const j = await api('/api/dashboard/k8s/workflow', { method: 'POST' }); activeWorkflow = j.job_id; await watchK8s(j.job_id); }
+      catch (e) { kOut.textContent = `WORKFLOW START FAILED\n${e.message}`; kState.textContent = 'ERROR'; kState.className = 'pill bad'; kStart.disabled = false; }
+    };
+    kReport.onclick = () => activeWorkflow && download(`/api/dashboard/k8s/workflow/${encodeURIComponent(activeWorkflow)}/report`, `sentinelx-lab18-${activeWorkflow.slice(0,8)}-benchmark.md`);
+    if (admin) {
+      try { const latest = (await api('/api/dashboard/k8s/workflow/latest')).workflow; if (latest) { activeWorkflow = latest.job_id; setK8sStatus(latest); kOut.textContent = latest.output || ''; if (['queued','running'].includes(latest.status)) await watchK8s(latest.job_id); } }
+      catch (e) { kOut.textContent = `Kubernetes workflow API unavailable: ${e.message}`; kState.textContent = 'OFFLINE'; kState.className = 'pill bad'; }
+    }
+  }
+  $$('[data-cp]').forEach(b => b.onclick = () => copyText(b.dataset.cp, b));
+  $$('[data-out]').forEach(b => b.onclick = () => { out.textContent = last[b.dataset.out]?.output || 'No output stored.'; });
+  let pollTimer = null;
+  const state = $('#runState');
+  const watchJob = async jobId => {
+    if (pollTimer) clearInterval(pollTimer);
+    let finished = false, polling = false;
+    const poll = async () => {
+      if (polling || finished) return;
+      polling = true;
+      try {
+        const j = await api('/api/dashboard/jobs/' + encodeURIComponent(jobId));
+        out.textContent = j.output || '(Waiting for output…)';
+        out.scrollTop = out.scrollHeight;
+        state.textContent = String(j.status || 'RUNNING').toUpperCase();
+        state.className = 'pill ' + (j.status === 'passed' ? 'ok' : j.status === 'failed' ? 'bad' : 'warn');
+        if (['passed', 'failed'].includes(j.status)) {
+          finished = true; clearInterval(pollTimer); pollTimer = null;
+          $$('[data-run]').forEach(x => { x.disabled = false; x.textContent = 'Run'; });
+        }
+      } catch (e) { finished = true; out.textContent += '\n[Live log connection interrupted] ' + e.message; clearInterval(pollTimer); pollTimer = null; }
+      finally { polling = false; }
+    };
+    await poll();
+    if (!finished) pollTimer = setInterval(poll, 850);
+  };
+  $$('[data-run]').forEach(b => b.onclick = async () => {
+    const e = d.experiments.find(x => x.id === b.dataset.run);
+    if (!confirm((e.warning ? 'WARNING: ' + e.warning + '\n\n' : '') + `Run ${e.lab} · ${e.title}? Check its prerequisites.`)) return;
+    $$('[data-run]').forEach(x => { x.disabled = true; });
+    state.textContent = 'QUEUED'; state.className = 'pill warn';
+    out.textContent = `[SENTINEL-X] Starting ${e.lab} · ${e.title}…\n`;
+    try {
+      const r = await api('/api/dashboard/run/' + e.id + '?confirmed=true', { method: 'POST' });
+      out.textContent = r.output || `[SENTINEL-X] Job ${r.job_id} queued. Waiting for runner output…`;
+      await watchJob(r.job_id);
+    } catch (er) {
+      out.textContent = 'EXECUTION ERROR\n' + er.message; state.textContent = 'ERROR'; state.className = 'pill bad';
+      $$('[data-run]').forEach(x => { x.disabled = false; });
+    }
+  });
+  $$('[data-file]').forEach(b => b.onclick = async () => { const c = $('#code'); c.classList.remove('hidden'); c.textContent = 'Loading…'; try { c.textContent = (await api(`/api/labs/${n}/files/${encodeURIComponent(b.dataset.file)}`)).content; } catch (e) { c.textContent = e.message; } });
+  $('#dlOut').onclick = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out.textContent], { type: 'text/plain' })); a.download = `sentinelx-lab${n}-output.txt`; a.click(); URL.revokeObjectURL(a.href); };
+  redraw = () => { charts.forEach(c => c.destroy()); charts = []; const es = d.experiments; drawChart('labC', 'bar', es.map(e => e.lab), [{ label: 'Seconds', data: es.map(e => last[e.id]?.seconds || 0), backgroundColor: es.map(e => last[e.id] ? (last[e.id].status === 'passed' ? '#55d6a2' : '#ff647c') : '#52627d'), borderRadius: 4 }]); }; redraw();
+  if (admin) { try { const latest = (await api('/api/dashboard/jobs/latest/' + n)).job; if (latest) { out.textContent = latest.output || ''; state.textContent = String(latest.status).toUpperCase(); state.className = 'pill ' + (latest.status === 'passed' ? 'ok' : latest.status === 'failed' ? 'bad' : 'warn'); if (['queued','running'].includes(latest.status)) { $$('[data-run]').forEach(x => { x.disabled = true; }); await watchJob(latest.job_id); } } } catch {} }
+  mountChat($('#chatRoot'), { lab: String(n), compact: true });
+}
+
+/* ============================ sources ============================ */
+async function sources() {
+  setCrumb('INTELLIGENCE SOURCES');
+  const [src, stats, sync] = await Promise.all([api('/api/sources'), api('/api/stats'), api('/api/dashboard/settings/sync')]), admin = isAdmin();
+  $('#view').innerHTML = shell('Intelligence sources', 'Feed catalogue and synchronisation. Feed retrieval is not independent malware verification.') +
+    `<div class="grid kpis">${kpi('THREAT RECORDS', fmt(stats.total))}${kpi('SOURCES', fmt(src.length))}${kpi('SYNC INTERVAL', fmt(sync.interval_seconds) + 's', 'Applied by the sync service')}${kpi('MODE', 'Incremental', 'Duplicates prevented by canonical URL')}</div>
+    <section class="panel"><div class="panelhead"><h3>Synchronisation</h3>${admin ? '' : pill('warn', 'ADMIN ONLY')}</div><div class="toolbar"><select id="syncInt" ${admin ? '' : 'disabled'}>${[[10, '10 seconds'], [30, '30 seconds'], [60, '1 minute'], [300, '5 minutes'], [600, '10 minutes'], [1800, '30 minutes']].map(([s, l]) => `<option value="${s}">${l}</option>`).join('')}</select><button class="btn primary" id="saveSync" ${admin ? '' : 'disabled'}>Save interval</button><button class="btn" id="syncNow" ${admin ? '' : 'disabled'}>Sync now</button><span class="sub" id="syncMsg"></span></div></section>
+    <section class="panel" style="margin-top:14px"><div class="panelhead"><h3>Configured sources</h3>${pill('', src.length + ' SOURCES')}</div><div class="grid sourcegrid">${src.map(x => `<div class="source"><b>${esc(x.name || 'Source')}</b><small>${esc(x.url || x.feed_url || '')}</small></div>`).join('') || '<div class="empty">No sources configured yet. Run a sync.</div>'}</div></section>`;
+  $('#syncInt').value = String(sync.interval_seconds);
+  $('#saveSync').onclick = async () => { try { await api('/api/dashboard/settings/sync', { method: 'POST', json: { interval_seconds: Number($('#syncInt').value) } }); $('#syncMsg').textContent = 'Saved.'; } catch (e) { $('#syncMsg').textContent = e.message; } };
+  $('#syncNow').onclick = async () => { const m = $('#syncMsg'); m.textContent = 'Syncing…'; try { const r = await api('/api/dashboard/sync/now', { method: 'POST' }); m.textContent = `Done: ${fmt(r.articles_seen)} feed items from ${fmt(r.sources_seen)} sources; ${fmt(r.threats_total)} records stored.`; } catch (e) { m.textContent = e.message; } };
+}
+
+/* ============================ administration ============================ */
+const aState = { tab: 'users', u: { search: '', role: '', status: '', skip: 0 }, a: { q: '', success: '', event_type: '', date_from: '', date_to: '', skip: 0 } };
+async function adminPage() {
+  setCrumb('ADMINISTRATION'); const s = await api('/api/admin/summary');
+  $('#view').innerHTML = shell('Administration', 'Manage accounts, review authentication activity and monitor suspicious behaviour.') +
+    `<div class="grid kpis">${kpi('REGISTERED USERS', fmt(s.users_total), `${fmt(s.admins)} administrators`)}${kpi('ACTIVE / DISABLED', `${fmt(s.users_active)} / ${fmt(s.users_disabled)}`, 'Account status', '#55d6a222')}${kpi('SUCCESSFUL LOGINS', fmt(s.logins_success_total), `${fmt(s.logins_success_24h)} in the last 24h`, '#55d6a222')}${kpi('FAILED LOGINS', fmt(s.logins_failed_total), `${fmt(s.logins_failed_24h)} in the last 24h`, '#ff647c22')}</div>
+    <div class="tabs">${[['users', 'User management'], ['activity', 'Login activity'], ['security', 'Security monitoring']].map(([k, l]) => `<button data-tab="${k}" class="${aState.tab === k ? 'active' : ''}">${l}</button>`).join('')}</div><div id="tab"></div>`;
+  $$('[data-tab]').forEach(b => b.onclick = () => { aState.tab = b.dataset.tab; $$('[data-tab]').forEach(x => x.classList.toggle('active', x === b)); tabLoad(); }); await tabLoad();
+}
+const tabLoad = () => ({ users: usersTab, activity: activityTab, security: securityTab }[aState.tab])();
+async function usersTab() {
+  const t = $('#tab'), f = aState.u; t.innerHTML = loading();
+  const d = await api('/api/admin/users?' + qs({ ...f, limit: 25 })), self = me().username;
+  t.innerHTML = `<section class="panel" style="margin-bottom:14px"><div class="panelhead"><h3>Create user</h3><span class="sub">Only administrators can create administrators</span></div><div class="toolbar"><input id="nu" placeholder="Username"><input id="np" type="password" placeholder="Password · 12+ characters" autocomplete="new-password"><select id="nr"><option value="user">User</option><option value="admin">Admin</option></select><button class="btn primary" id="nc">Create account</button><span class="sub" id="nm"></span></div></section>
+    <section class="panel"><div class="toolbar" style="margin-bottom:12px"><input id="us" class="grow" placeholder="Search username" value="${esc(f.search)}"><select id="ur"><option value="">All roles</option><option value="user">User</option><option value="admin">Admin</option></select><select id="ust"><option value="">All statuses</option><option value="active">Active</option><option value="disabled">Disabled</option></select><button class="btn" id="ugo">Filter</button></div>
+    <div class="tablewrap"><table><thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Registered</th><th>Last login</th><th>Actions</th></tr></thead><tbody>${d.results.map(u => `<tr><td><a href="#" data-info="${esc(u.username)}">${esc(u.username)}</a>${u.username === self ? ' ' + pill('info', 'YOU') : ''}</td><td>${pill(u.role === 'admin' ? 'warn' : '', u.role)}</td><td>${pill(u.active ? 'ok' : 'bad', u.active ? 'Active' : 'Disabled')}</td><td>${fdate(u.created_at)}</td><td>${fdate(u.last_login_at)}</td><td class="toolbar"><button class="btn sm" data-tog="${esc(u.username)}" data-role="${u.role}" data-act="${u.active}" ${u.username === self ? 'disabled title="You cannot disable yourself"' : ''}>${u.active ? 'Disable' : 'Enable'}</button><button class="btn sm" data-role-set="${esc(u.username)}" data-role="${u.role}" data-act="${u.active}" ${u.username === self ? 'disabled' : ''}>Make ${u.role === 'admin' ? 'user' : 'admin'}</button><button class="btn sm danger" data-del="${esc(u.username)}" ${u.username === self ? 'disabled' : ''}>Delete</button></td></tr>`).join('') || '<tr><td colspan="6"><div class="empty" style="padding:24px">No users match.</div></td></tr>'}</tbody></table></div>${pager(d.total, f.skip, 25)}</section>`;
+  $('#ur').value = f.role; $('#ust').value = f.status;
+  $('#ugo').onclick = () => { Object.assign(f, { search: $('#us').value.trim(), role: $('#ur').value, status: $('#ust').value, skip: 0 }); usersTab(); };
+  $('#us').onkeydown = e => { if (e.key === 'Enter') $('#ugo').click(); };
+  $$('[data-page]', t).forEach(b => b.onclick = () => { f.skip = Math.max(0, f.skip + (b.dataset.page === 'next' ? 25 : -25)); usersTab(); });
+  const act = async (fn) => { try { await fn(); await usersTab(); } catch (e) { alert(e.message); } };
+  $('#nc').onclick = async () => { try { const r = await api('/api/admin/users', { method: 'POST', json: { username: $('#nu').value.trim(), password: $('#np').value, role: $('#nr').value } }); $('#nm').textContent = 'Created ' + r.username; await usersTab(); } catch (e) { $('#nm').textContent = e.message; } };
+  $$('[data-tog]').forEach(b => b.onclick = () => act(() => api('/api/admin/users/' + encodeURIComponent(b.dataset.tog), { method: 'PATCH', json: { role: b.dataset.role, active: b.dataset.act !== 'true' } })));
+  $$('[data-role-set]').forEach(b => b.onclick = () => { const nr = b.dataset.role === 'admin' ? 'user' : 'admin'; if (confirm(`Change ${b.dataset.roleSet} to ${nr}?`)) act(() => api('/api/admin/users/' + encodeURIComponent(b.dataset.roleSet), { method: 'PATCH', json: { role: nr, active: b.dataset.act === 'true' } })); });
+  $$('[data-del]').forEach(b => b.onclick = () => { if (confirm(`Permanently delete account "${b.dataset.del}"? Login history is kept.`)) act(() => api('/api/admin/users/' + encodeURIComponent(b.dataset.del), { method: 'DELETE' })); });
+  $$('[data-info]').forEach(a => a.onclick = async e => { e.preventDefault(); const w = drawer(loading()); try { const u = await api('/api/admin/users/' + encodeURIComponent(a.dataset.info)); $('.loading', w).remove(); $('.drawer', w).insertAdjacentHTML('beforeend', `<h2>${esc(u.username)}</h2><div class="toolbar" style="margin:8px 0 14px">${pill(u.role === 'admin' ? 'warn' : '', u.role)}${pill(u.active ? 'ok' : 'bad', u.active ? 'Active' : 'Disabled')}</div><div class="kv"><div><b>User ID</b>${esc(u.id)}</div><div><b>Registered</b>${fdate(u.created_at)} (${esc(u.registered_via)})</div><div><b>Last login</b>${fdate(u.last_login_at)}</div><div><b>Failed logins (all time)</b>${fmt(u.failed_logins_total)}</div></div><h3 style="margin:18px 0 6px">Recent events</h3><div class="tablewrap"><table style="min-width:0"><tbody>${u.recent_events.map(x => `<tr><td>${fdate(x.created_at)}</td><td>${esc(x.event_type || 'login')}</td><td class="${x.success ? 'audit-success' : 'audit-fail'}">${x.success ? 'OK' : 'FAIL'}</td><td>${esc(x.reason)}</td></tr>`).join('')}</tbody></table></div>`); } catch (er) { $('.loading', w)?.remove(); $('.drawer', w).insertAdjacentHTML('beforeend', errBox(er.message, false)); } });
+}
+async function activityTab() {
+  const t = $('#tab'), f = aState.a; t.innerHTML = loading();
+  const d = await api('/api/admin/login-activity?' + qs({ ...f, limit: 25 }));
+  t.innerHTML = `<section class="panel"><div class="toolbar" style="margin-bottom:12px"><input id="aq" class="grow" placeholder="Search username" value="${esc(f.q)}"><select id="as"><option value="">All results</option><option value="true">Successful</option><option value="false">Failed</option></select><select id="ae"><option value="">All events</option><option value="login">Login</option><option value="registration">Registration</option><option value="logout">Logout</option></select><input id="af" type="date" value="${f.date_from}" title="From"><input id="at" type="date" value="${f.date_to}" title="To"><button class="btn primary" id="ago">Filter</button><button class="btn" id="aexp">⇩ Export CSV</button></div>
+    <div class="tablewrap"><table><thead><tr><th>Time</th><th>Event</th><th>Username</th><th>Role</th><th>Result</th><th>Reason</th><th>IP</th><th>Browser</th><th>Correlation ID</th></tr></thead><tbody>${d.results.map(x => `<tr><td>${fdate(x.created_at)}</td><td>${esc(x.event_type || 'login')}</td><td>${esc(x.username)}</td><td>${esc(x.role || '—')}</td><td class="${x.success ? 'audit-success' : 'audit-fail'}">${x.success ? 'SUCCESS' : 'FAILED'}</td><td>${esc(x.reason)}</td><td>${esc(x.ip_address)}</td><td class="trunc" title="${esc(x.user_agent)}">${esc((x.user_agent || '').slice(0, 50))}</td><td class="trunc">${esc(x.correlation_id || '—')}</td></tr>`).join('') || '<tr><td colspan="9"><div class="empty" style="padding:24px">No events match.</div></td></tr>'}</tbody></table></div>${pager(d.total, f.skip, 25)}</section>`;
+  $('#as').value = f.success; $('#ae').value = f.event_type;
+  const read = () => Object.assign(f, { q: $('#aq').value.trim(), success: $('#as').value, event_type: $('#ae').value, date_from: $('#af').value, date_to: $('#at').value });
+  $('#ago').onclick = () => { read(); f.skip = 0; activityTab(); }; $('#aq').onkeydown = e => { if (e.key === 'Enter') $('#ago').click(); };
+  $('#aexp').onclick = () => { read(); const { skip, ...r } = f; download('/api/admin/login-activity.csv?' + qs(r), 'sentinelx-login-activity.csv'); };
+  $$('[data-page]', t).forEach(b => b.onclick = () => { f.skip = Math.max(0, f.skip + (b.dataset.page === 'next' ? 25 : -25)); activityTab(); });
+}
+async function securityTab() {
+  const t = $('#tab'); t.innerHTML = loading(); const s = await api('/api/admin/security');
+  t.innerHTML = `<div class="grid kpis">${kpi('FAILED LOGINS (24H)', fmt(s.failed_logins_24h), '', '#ff647c22')}${kpi('LOCKOUTS (24H)', fmt(s.lockouts_24h), `After ${s.thresholds.lockout_after} failures · ${s.thresholds.lockout_minutes} min`)}${kpi('REPEATED-FAILURE ALERTS', fmt(s.repeated_failures.length), `≥ ${s.thresholds.repeated_failures} failures / hour`)}${kpi('DISABLED ACCOUNTS', fmt(s.disabled_accounts.length))}</div>
+    <div class="grid cols2"><section class="panel"><div class="panelhead"><h3>Repeated failed logins</h3><span class="sub">${esc(s.window)}</span></div><div class="alertlist">${s.repeated_failures.map(x => `<div class="alert bad"><b>${esc(x.username)}</b> from ${esc(x.ip_address)} — ${fmt(x.failures)} failed attempts, last ${fdate(x.last)}</div>`).join('') || '<div class="empty" style="padding:20px">No repeated failures detected.</div>'}</div></section>
+      <section class="panel"><div class="panelhead"><h3>Possible password spraying</h3><span class="sub">One IP · 3+ different usernames</span></div><div class="alertlist">${s.possible_password_spraying.map(x => `<div class="alert bad"><b>${esc(x.ip_address)}</b> tried ${fmt(x.distinct_usernames)} usernames (${fmt(x.failures)} failures)</div>`).join('') || '<div class="empty" style="padding:20px">No suspicious activity detected.</div>'}</div></section></div>
+    <section class="panel"><div class="panelhead"><h3>Disabled / inactive accounts</h3></div><div class="toolbar">${s.disabled_accounts.map(u => pill('bad', u)).join('') || '<span class="sub">All accounts are active.</span>'}</div></section>`;
+}
+
+/* ============================ boot ============================ */
+(async function main() {
+  const dark = localStorage.getItem('sx-theme') || 'dark'; document.documentElement.dataset.theme = dark;
+  const path = location.pathname, token = localStorage.getItem(TOKEN);
+  if (path === '/login' || path === '/register' || !token) { if (!token && path !== '/register') history.replaceState({}, '', '/login'); showAuth(location.pathname === '/register' ? 'register' : 'login'); return; }
+  if (localStorage.getItem('sx-collapsed')) document.body.classList.add('collapsed');
+  $('#appRoot').classList.remove('hidden');
+  try { localStorage.setItem(USER, JSON.stringify(await api('/api/auth/me'))); } catch (e) { return; }
+  const u = me(); $('#userChip').innerHTML = `${esc(u.username)} · ${esc(u.role)}`;
+  $('#menuBtn').onclick = toggleMenu; $('#scrim').onclick = () => document.body.classList.remove('navopen'); $('#logoutBtn').onclick = logout;
+  $('#themeBtn').onclick = () => { const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = t; localStorage.setItem('sx-theme', t); if (redraw) redraw(); };
+  if (path === '/login' || path === '/register') history.replaceState({}, '', '/console');
+  route();
+})();

@@ -1,0 +1,385 @@
+
+"""SENTINEL-X Boss assistant: instant tools/cache + Gemini/Ollama streaming."""
+
+import json
+import logging
+import time
+
+import requests
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+
+import agent
+import config
+import conversations
+import model_router
+from project_knowledge import augment_messages
+from saas import current_user
+
+router = APIRouter(prefix="/api")
+log = logging.getLogger("sentinelx.assistant")
+
+
+def _sse(obj: dict) -> str:
+    return "data: " + json.dumps(obj, default=str) + "\n\n"
+
+
+def _gemini_payload(messages: list[dict]) -> dict:
+    """Convert the existing agent message format into Gemini REST format."""
+    contents = []
+    system_parts = []
+
+    for item in messages:
+        role = item.get("role", "user")
+        content = str(item.get("content", ""))
+
+        if not content:
+            continue
+
+        if role == "system":
+            system_parts.append(content)
+        elif role in ("user", "assistant"):
+            contents.append({
+                "role": "model" if role == "assistant" else "user",
+                "parts": [{"text": content}],
+            })
+
+    payload = {
+        "contents": contents,
+        "generationConfig": {
+            "temperature": 0.25,
+            "maxOutputTokens": config.OLLAMA_NUM_PREDICT,
+        },
+    }
+
+    if system_parts:
+        payload["systemInstruction"] = {
+            "parts": [{"text": "\n\n".join(system_parts)}]
+        }
+
+    return payload
+
+
+def _stream_gemini(response):
+    """Yield text chunks from Gemini's server-sent-event response."""
+    for line in response.iter_lines(decode_unicode=True):
+        if not line:
+            continue
+
+        if isinstance(line, bytes):
+            line = line.decode("utf-8", errors="replace")
+
+        line = line.strip()
+
+        if not line.startswith("data:"):
+            continue
+
+        raw = line[5:].strip()
+        if not raw or raw == "[DONE]":
+            continue
+
+        try:
+            chunk = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+
+        if chunk.get("error"):
+            raise RuntimeError(
+                str(chunk["error"].get("message", chunk["error"]))[:200]
+            )
+
+        candidates = chunk.get("candidates") or []
+        if not candidates:
+            continue
+
+        content = candidates[0].get("content") or {}
+        for part in content.get("parts", []):
+            token = part.get("text", "")
+            if token:
+                yield token
+
+
+def _stream_ollama(response):
+    """Yield text chunks from Ollama's newline-delimited JSON response."""
+    for line in response.iter_lines():
+        if not line:
+            continue
+
+        if isinstance(line, bytes):
+            line = line.decode("utf-8", errors="replace")
+
+        chunk = json.loads(line)
+
+        if chunk.get("error"):
+            raise RuntimeError(str(chunk["error"])[:200])
+
+        token = (chunk.get("message") or {}).get("content", "")
+        if token:
+            yield token
+
+
+@router.post("/assistant/stream")
+def assistant_stream(body: agent.AssistantRequest, user=Depends(current_user)):
+    message = body.message.strip()
+
+    if not message:
+        raise HTTPException(400, "Enter a message")
+
+    if len(message) > 6000:
+        raise HTTPException(
+            413, "Message is too long (limit 6000 characters)."
+        )
+
+    lab = str(body.lab).strip() if body.lab else None
+
+    # Resolve only a conversation owned by the signed-in user.
+    conv = conversations.resolve(user, body.conversation_id, lab)
+    cid = conv["_id"]
+    is_new = conv.get("message_count", 0) == 0
+
+    def gen():
+        t0 = time.perf_counter()
+
+        def ms():
+            return round((time.perf_counter() - t0) * 1000)
+
+        yield _sse({"type": "meta", "conversation_id": cid})
+
+        # 1. Return cached standalone questions immediately.
+        key = agent.cache_key(message, lab)
+        cache_allowed = agent.cacheable_fast_query(message)
+        cached = agent.cache_get(key) if cache_allowed else None
+
+        if cached is not None:
+            agent.store_history(
+                user, lab, message, cached, "cache",
+                conversation_id=cid
+            )
+            yield _sse({
+                "type": "final",
+                "reply": cached,
+                "mode": "cache",
+                "lab": lab,
+                "executed": False,
+                "model": "SENTINEL-X response cache",
+                "cached": True,
+                "ms": ms(),
+            })
+            yield _sse({
+                "type": "done",
+                "ms": ms(),
+                "first_token_ms": ms(),
+                "cached": True,
+                "instant": True,
+            })
+            return
+
+        # 2. Try registered tools and the built-in knowledge base.
+        try:
+            tool_result = agent.try_tools(message, lab, user)
+        except Exception as exc:
+            log.exception("Assistant tool lookup failed")
+            yield _sse({
+                "type": "error",
+                "message": (
+                    f"Assistant tool lookup failed: "
+                    f"{type(exc).__name__}: {str(exc)[:160]}"
+                ),
+            })
+            return
+
+        if tool_result:
+            reply = tool_result.get("reply", "")
+            mode = tool_result.get("mode", "tool")
+
+            agent.store_history(
+                user, lab, message, reply, mode,
+                conversation_id=cid
+            )
+
+            yield _sse({
+                "type": "final",
+                **tool_result,
+                "conversation_id": cid,
+                "ms": ms(),
+            })
+            yield _sse({
+                "type": "done",
+                "ms": ms(),
+                "first_token_ms": ms(),
+                "instant": True,
+            })
+            return
+
+        # 3. Build context for the language model.
+        try:
+            msgs, shared, first_turn = agent.build_messages(
+                message, lab, user, body.history, cid
+            )
+            msgs = augment_messages(msgs, message, lab)
+        except Exception as exc:
+            log.exception("Could not build assistant context")
+            yield _sse({
+                "type": "error",
+                "message": (
+                    f"Could not prepare assistant context: "
+                    f"{type(exc).__name__}: {str(exc)[:160]}"
+                ),
+            })
+            return
+
+        parts = []
+        first = None
+        targets = model_router.candidates(message)
+        used_target = targets[0] if targets else {}
+        last_error = None
+
+        # 4. Try the preferred provider, then its configured fallback.
+        for target_index, target in enumerate(targets):
+            used_target = target
+
+            try:
+                provider = target["provider"]
+
+                if provider == "gemini":
+                    payload = _gemini_payload(msgs)
+
+                    with requests.post(
+                        target["url"],
+                        headers=target["headers"],
+                        json=payload,
+                        stream=True,
+                        timeout=(10, 180),
+                    ) as response:
+                        response.raise_for_status()
+
+                        for token in _stream_gemini(response):
+                            if first is None:
+                                first = ms()
+
+                            parts.append(token)
+                            yield _sse({
+                                "type": "token",
+                                "content": token,
+                            })
+
+                elif provider == "ollama-local":
+                    payload = {
+                        "model": target["model"],
+                        "messages": msgs,
+                        "stream": True,
+                        "think": False,
+                        "options": agent.ollama_options(),
+                        "keep_alive": config.OLLAMA_KEEP_ALIVE,
+                    }
+
+                    with requests.post(
+                        target["url"],
+                        headers=target["headers"],
+                        json=payload,
+                        stream=True,
+                        timeout=(8, 240),
+                    ) as response:
+                        if response.status_code == 404:
+                            raise RuntimeError(
+                                f"Local model '{target['model']}' not found. "
+                                f"Run: ollama pull {target['model']}"
+                            )
+
+                        response.raise_for_status()
+
+                        for token in _stream_ollama(response):
+                            if first is None:
+                                first = ms()
+
+                            parts.append(token)
+                            yield _sse({
+                                "type": "token",
+                                "content": token,
+                            })
+
+                else:
+                    raise RuntimeError(
+                        f"Unsupported assistant provider: {provider}"
+                    )
+
+                # Do not silently accept an empty model response.
+                if not parts:
+                    raise RuntimeError(
+                        f"{provider} returned an empty response"
+                    )
+
+                # The selected provider completed successfully.
+                break
+
+            except Exception as exc:
+                last_error = exc
+
+                # Do not retry after tokens have already reached the browser:
+                # retrying would duplicate or mix two answers.
+                if not parts and target_index + 1 < len(targets):
+                    log.warning(
+                        "Assistant route %s failed; trying fallback (%s)",
+                        target.get("provider", "unknown"),
+                        type(exc).__name__,
+                    )
+                    continue
+
+                log.warning(
+                    "Assistant stream failed (%s): %s",
+                    target.get("provider", "unknown"),
+                    type(exc).__name__,
+                )
+
+                yield _sse({
+                    "type": "error",
+                    "message": (
+                        f"Assistant request failed using "
+                        f"{target.get('provider', 'unknown')}: "
+                        f"{type(exc).__name__}: {str(exc)[:180]}"
+                    ),
+                })
+                return
+
+        if last_error is not None and not parts:
+            yield _sse({
+                "type": "error",
+                "message": (
+                    f"Assistant unavailable: "
+                    f"{type(last_error).__name__}: {str(last_error)[:180]}"
+                ),
+            })
+            return
+
+        # 5. Store the completed answer and update the response cache.
+        answer = "".join(parts).strip()
+
+        if answer:
+            agent.store_history(
+                user, lab, message, answer, "llm", shared, cid
+            )
+
+            if (
+                first_turn
+                and len(message) < 300
+                and agent.cacheable_fast_query(message)
+            ):
+                agent.cache_put(key, answer)
+
+        yield _sse({
+            "type": "done",
+            "ms": ms(),
+            "first_token_ms": first,
+            "model": used_target.get("model"),
+            "provider": used_target.get("provider"),
+        })
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

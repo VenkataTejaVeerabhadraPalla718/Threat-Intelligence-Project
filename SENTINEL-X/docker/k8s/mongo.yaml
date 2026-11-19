@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongo-headless-svc
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: mongo
+  ports:
+    - port: 27017
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongo
+spec:
+  serviceName: mongo-headless-svc
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mongo
+  template:
+    metadata:
+      labels:
+        app: mongo
+    spec:
+      initContainers:
+        - name: keyfile
+          image: busybox
+          command: ["sh", "-c", "cp /secret/keyfile /keys/keyfile && chmod 400 /keys/keyfile && chown 999:999 /keys/keyfile"]
+          volumeMounts:
+            - {name: secret, mountPath: /secret}
+            - {name: keys, mountPath: /keys}
+      containers:
+        - name: mongo
+          image: mongo:7
+          command: ["mongod", "--replSet", "rs0", "--keyFile", "/keys/keyfile", "--bind_ip", "0.0.0.0", "--wiredTigerCacheSizeGB", "0.25"]
+          ports:
+            - containerPort: 27017
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            tcpSocket: {port: 27017}
+            initialDelaySeconds: 5
+          volumeMounts:
+            - {name: data, mountPath: /data/db}
+            - {name: keys, mountPath: /keys}
+      volumes:
+        - name: secret
+          secret: {secretName: mongo-keyfile}
+        - name: keys
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

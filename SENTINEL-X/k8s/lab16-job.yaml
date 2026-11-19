@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sentinelx-lab16
+  labels:
+    app: sentinelx
+    lab: "16"
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 10800
+  ttlSecondsAfterFinished: 604800
+  template:
+    metadata:
+      labels:
+        app: sentinelx
+        lab: "16"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: lab16-seed
+          image: sentinelx-local-api:latest
+          imagePullPolicy: Never
+          workingDir: /app
+          command: ["python", "-u", "/app/labs/lab16/01_model_and_seed.py"]
+          env:
+            - name: LAB16_TARGET_RECORDS
+              value: "300000"
+            - name: LAB16_BATCH_SIZE
+              value: "1000"
+            - name: MONGO_HOST
+              value: "host.docker.internal"
+            - name: MONGO_PORT
+              value: "27118"
+            - name: CASSANDRA_HOST
+              value: "host.docker.internal"
+            - name: CASSANDRA_PORT
+              value: "9042"
+            - name: NEO4J_URI
+              value: "bolt://host.docker.internal:7687"
+            - name: NEO4J_USER
+              value: "neo4j"
+            - name: NEO4J_PASSWORD
+              value: "change-this-local"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "3Gi"
