@@ -1,6 +1,5 @@
 ﻿# Lab-10 — Detailed Lab Guide
 
-## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadrapalla718/lab10-mongodb
 
 ## Project Docker Hub: Not published/verified
 
@@ -18,7 +17,6 @@
 
 # NoSQL Lab 10
 
-## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadrapalla718/lab10-mongodb
 
 ## Project Docker Hub: Not published/verified
 
@@ -69,12 +67,10 @@ Run from PowerShell. These are safe starting commands inferred from files; selec
 Set-Location "V:\NoSQL\SENTINELX-LOCAL\github-upload\Labs\Lab-10"
 # Python files detected: 01_transfer.py, 02_inventory.py
 
-## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadrapalla718/lab10-mongodb
 
 ## Project Docker Hub: Not published/verified
 # Check the lab instructions/source to choose the intended entry point; do not run every file.
 
-## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadrapalla718/lab10-mongodb
 
 ## Project Docker Hub: Not published/verified
 ```
@@ -109,5 +105,6 @@ Set-Location "V:\NoSQL\SENTINELX-LOCAL\github-upload\Labs\Lab-10"
 - [ ] Commands have been tested.
 - [ ] Actual outputs/screenshots are included.
 - [ ] No credentials or private data are committed.
+
 
 

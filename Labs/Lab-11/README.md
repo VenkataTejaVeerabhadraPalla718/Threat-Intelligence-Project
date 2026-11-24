@@ -1,6 +1,5 @@
 ﻿# Lab-11 — Detailed Lab Guide
 
-## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadra718/nosql_exercise-11
 
 ## Project Docker Hub: Not published/verified
 
@@ -18,7 +17,6 @@
 
 # NoSQL Lab 11
 
-## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadra718/nosql_exercise-11
 
 ## Project Docker Hub: Not published/verified
 
@@ -100,5 +98,6 @@ py "02_hotspot.py"
 - [ ] Commands have been tested.
 - [ ] Actual outputs/screenshots are included.
 - [ ] No credentials or private data are committed.
+
 
 
