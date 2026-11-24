@@ -1,0 +1,11 @@
+{
+  "documents_per_insert_test": 10000,
+  "secondary_indexes": [
+    "category",
+    "price",
+    "rating",
+    "tags",
+    "name_text"
+  ],
+  "critical_index_retained": "category"
+}

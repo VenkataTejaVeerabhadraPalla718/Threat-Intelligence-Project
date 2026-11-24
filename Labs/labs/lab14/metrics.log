@@ -1,0 +1,28 @@
+--- 2026-11-12 16:01:19 ---
+connections           39
+cache hit ratio       99.97%
+opcounters            insert=119 query=214 update=142 delete=0
+mongo1:27117          SECONDARY  lag=0s
+mongo2:27118          PRIMARY    lag=0s
+mongo3:27119          SECONDARY  lag=0s
+--- 2026-11-12 16:19:50 ---
+connections           23
+cache hit ratio       99.99%
+opcounters            insert=116444 query=151571 update=1164 delete=11
+mongo1:27117          SECONDARY  lag=1s
+mongo2:27118          PRIMARY    lag=0s
+mongo3:27119          SECONDARY  lag=1s
+--- 2026-11-12 17:12:06 ---
+connections           26
+cache hit ratio       99.99%
+opcounters            insert=226471 query=302438 update=1746 delete=120
+mongo1:27117          SECONDARY  lag=1s
+mongo2:27118          PRIMARY    lag=0s
+mongo3:27119          SECONDARY  lag=1s
+--- 2026-11-12 20:56:21 ---
+connections           26
+cache hit ratio       99.98%
+opcounters            insert=236827 query=438768 update=2371 delete=192
+mongo1:27117          SECONDARY  lag=0s
+mongo2:27118          PRIMARY    lag=0s
+mongo3:27119          SECONDARY  lag=0s

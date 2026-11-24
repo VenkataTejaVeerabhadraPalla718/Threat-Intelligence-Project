@@ -1,4 +1,6 @@
-﻿# SENTINEL-X — Complete Technical and Execution Guide
+﻿# SENTINEL-X — Complete Technical and Execution Guide
+
+## Project Docker Hub: Not published/verified
 
 ## 1. Project overview
 
@@ -87,9 +89,13 @@ Check Docker engine, environment variables, port conflicts, container health, Mo
 
 ```powershell
 docker compose stop
-# Or remove containers/network while preserving named volumes:
+# Or remove containers/network while preserving named volumes:
+
+## Project Docker Hub: Not published/verified
 docker compose down
-# Do not append -v for routine shutdown.
+# Do not append -v for routine shutdown.
+
+## Project Docker Hub: Not published/verified
 ```
 
 ## 12. Source inventory
@@ -181,3 +187,4 @@ docker compose down
 - [ ] MongoDB is not publicly exposed without authentication/TLS.
 - [ ] Production API uses authentication, rate limits and HTTPS.
 - [ ] Logs do not disclose credentials.
+

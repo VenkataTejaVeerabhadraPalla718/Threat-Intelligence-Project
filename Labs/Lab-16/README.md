@@ -1,4 +1,6 @@
-﻿# Lab-16 — Detailed Lab Guide
+﻿# Lab-16 — Detailed Lab Guide
+
+## Project Docker Hub: Not published/verified
 
 > Generated from the files present in this lab folder. Verify the exact aim, dataset, entry point and expected output against the official lab sheet.
 
@@ -13,6 +15,8 @@
 ## 2. Previous README notes
 
 # NoSQL Lab 16
+
+## Project Docker Hub: Not published/verified
 
 ## Objective
 Refer to the experiment files and implementation included in this folder.
@@ -91,3 +95,4 @@ py "01_model_and_seed.py"
 - [ ] Commands have been tested.
 - [ ] Actual outputs/screenshots are included.
 - [ ] No credentials or private data are committed.
+

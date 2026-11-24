@@ -1,4 +1,6 @@
-﻿# Lab-01 — Detailed Lab Guide
+﻿# Lab-01 — Detailed Lab Guide
+
+## Project Docker Hub: Not published/verified
 
 > Generated from the files present in this lab folder. Verify the exact aim, dataset, entry point and expected output against the official lab sheet.
 
@@ -13,6 +15,8 @@
 ## 2. Previous README notes
 
 # NoSQL Lab 01
+
+## Project Docker Hub: Not published/verified
 
 ## Objective
 Refer to the experiment files and implementation included in this folder.
@@ -66,8 +70,12 @@ Run from PowerShell. These are safe starting commands inferred from files; selec
 
 ```powershell
 Set-Location "V:\NoSQL\SENTINELX-LOCAL\github-upload\Labs\Lab-01"
-# Python files detected: activity_1_1_classify_products.py, activity_1_1_try_yourself.py, activity_1_2_application_mapping.py, activity_1_2_try_yourself.py, run_all.py
-# Check the lab instructions/source to choose the intended entry point; do not run every file.
+# Python files detected: activity_1_1_classify_products.py, activity_1_1_try_yourself.py, activity_1_2_application_mapping.py, activity_1_2_try_yourself.py, run_all.py
+
+## Project Docker Hub: Not published/verified
+# Check the lab instructions/source to choose the intended entry point; do not run every file.
+
+## Project Docker Hub: Not published/verified
 ```
 
 ## 7. Expected output and verification
@@ -100,3 +108,4 @@ Set-Location "V:\NoSQL\SENTINELX-LOCAL\github-upload\Labs\Lab-01"
 - [ ] Commands have been tested.
 - [ ] Actual outputs/screenshots are included.
 - [ ] No credentials or private data are committed.
+

@@ -1,6 +1,6 @@
-﻿## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadra718/nosql-labs-suite
+﻿# Lab 5 â€“ Aggregation Pipelines
 
-# Lab 5 â€“ Aggregation Pipelines
+## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadra718/nosql-labs-suite
 
 
 
@@ -13,6 +13,7 @@ Website-runner experiments:
 - 5.2 Try it yourself: `$lookup` with a foreign pipeline filter
 
 Scripts use the isolated `lab5_sales_analytics` database. The website runner supplies `MONGODB_URI` from the existing NoSQL replica set. Lab 5 does not modify SENTINEL-X threat collections.
+
 
 
 

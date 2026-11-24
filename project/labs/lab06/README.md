@@ -1,6 +1,6 @@
-﻿## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadra718/nosql-labs-suite
+﻿# Lab 6 â€“ Index Design and Performance
 
-# Lab 6 â€“ Index Design and Performance
+## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadra718/nosql-labs-suite
 
 
 
@@ -13,6 +13,7 @@ Website-runner experiments:
 - 6.2 Try it yourself: verify a covered query using `explain()`
 
 Scripts use the isolated `lab6_indexing` database and runner-provided `MONGODB_URI`. Lab 6.1 recreates only `lab6_indexing.products`; Lab 6.2 recreates only `lab6_indexing.write_benchmark`.
+
 
 
 

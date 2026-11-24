@@ -2,6 +2,8 @@
 
 # SENTINEL-X Kubernetes LabOps Website Integration
 
+## Project Docker Hub: Not published/verified
+
 <!-- DOCKER-HUB-LINKS:START -->
 ## Docker Hub Links
 
@@ -124,6 +126,7 @@ All routes require an authenticated administrator.
 - YAML parsing for both Kubernetes Job manifests.
 
 The patch has not been run against your live Windows Docker Desktop cluster from this build environment. The in-container health command in installation Step 9 is the required final connectivity test before starting a website-triggered workflow.
+
 
 
 

@@ -1,0 +1,162 @@
+[
+  {
+    "customer": "Aarav",
+    "product": "Laptop",
+    "quantity": 1,
+    "unit_price": 850,
+    "order_date": "2026-01-05T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Diya",
+    "product": "Mouse",
+    "quantity": 2,
+    "unit_price": 25,
+    "order_date": "2026-01-08T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Kabir",
+    "product": "Keyboard",
+    "quantity": 1,
+    "unit_price": 75,
+    "order_date": "2026-01-12T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Aarav",
+    "product": "Monitor",
+    "quantity": 1,
+    "unit_price": 220,
+    "order_date": "2026-02-03T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Meera",
+    "product": "Laptop",
+    "quantity": 1,
+    "unit_price": 900,
+    "order_date": "2026-02-10T10:00:00Z",
+    "status": "pending"
+  },
+  {
+    "customer": "Rohan",
+    "product": "USB Cable",
+    "quantity": 3,
+    "unit_price": 10,
+    "order_date": "2026-02-15T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Diya",
+    "product": "Headphones",
+    "quantity": 1,
+    "unit_price": 120,
+    "order_date": "2026-03-01T10:00:00Z",
+    "status": "shipped"
+  },
+  {
+    "customer": "Kabir",
+    "product": "Mouse",
+    "quantity": 4,
+    "unit_price": 22,
+    "order_date": "2026-03-05T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Meera",
+    "product": "Keyboard",
+    "quantity": 2,
+    "unit_price": 65,
+    "order_date": "2026-03-11T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Aarav",
+    "product": "Webcam",
+    "quantity": 1,
+    "unit_price": 55,
+    "order_date": "2026-03-18T10:00:00Z",
+    "status": "cancelled"
+  },
+  {
+    "customer": "Rohan",
+    "product": "Monitor",
+    "quantity": 2,
+    "unit_price": 210,
+    "order_date": "2026-04-02T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Diya",
+    "product": "Laptop",
+    "quantity": 1,
+    "unit_price": 820,
+    "order_date": "2026-04-07T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Kabir",
+    "product": "USB Cable",
+    "quantity": 5,
+    "unit_price": 9,
+    "order_date": "2026-04-12T10:00:00Z",
+    "status": "pending"
+  },
+  {
+    "customer": "Meera",
+    "product": "Headphones",
+    "quantity": 2,
+    "unit_price": 110,
+    "order_date": "2026-04-20T10:00:00Z",
+    "status": "shipped"
+  },
+  {
+    "customer": "Aarav",
+    "product": "Mouse",
+    "quantity": 3,
+    "unit_price": 24,
+    "order_date": "2026-05-02T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Rohan",
+    "product": "Keyboard",
+    "quantity": 1,
+    "unit_price": 80,
+    "order_date": "2026-05-08T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Diya",
+    "product": "Webcam",
+    "quantity": 2,
+    "unit_price": 60,
+    "order_date": "2026-05-14T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Kabir",
+    "product": "Laptop",
+    "quantity": 1,
+    "unit_price": 880,
+    "order_date": "2026-05-21T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Meera",
+    "product": "Monitor",
+    "quantity": 1,
+    "unit_price": 230,
+    "order_date": "2026-06-04T10:00:00Z",
+    "status": "completed"
+  },
+  {
+    "customer": "Rohan",
+    "product": "Headphones",
+    "quantity": 1,
+    "unit_price": 130,
+    "order_date": "2026-06-10T10:00:00Z",
+    "status": "cancelled"
+  }
+]

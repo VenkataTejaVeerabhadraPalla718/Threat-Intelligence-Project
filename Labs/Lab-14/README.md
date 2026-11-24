@@ -1,4 +1,6 @@
-﻿# Lab-14 — Detailed Lab Guide
+﻿# Lab-14 — Detailed Lab Guide
+
+## Project Docker Hub: Not published/verified
 
 > Generated from the files present in this lab folder. Verify the exact aim, dataset, entry point and expected output against the official lab sheet.
 
@@ -13,6 +15,8 @@
 ## 2. Previous README notes
 
 # NoSQL Lab 14
+
+## Project Docker Hub: Not published/verified
 
 ## Objective
 Refer to the experiment files and implementation included in this folder.
@@ -75,8 +79,12 @@ Run from PowerShell. These are safe starting commands inferred from files; selec
 
 ```powershell
 Set-Location "V:\NoSQL\SENTINELX-LOCAL\github-upload\Labs\Lab-14"
-# Python files detected: 01_monitor.py, 02_backup_verify.py
-# Check the lab instructions/source to choose the intended entry point; do not run every file.
+# Python files detected: 01_monitor.py, 02_backup_verify.py
+
+## Project Docker Hub: Not published/verified
+# Check the lab instructions/source to choose the intended entry point; do not run every file.
+
+## Project Docker Hub: Not published/verified
 ```
 
 ## 7. Expected output and verification
@@ -109,3 +117,4 @@ Set-Location "V:\NoSQL\SENTINELX-LOCAL\github-upload\Labs\Lab-14"
 - [ ] Commands have been tested.
 - [ ] Actual outputs/screenshots are included.
 - [ ] No credentials or private data are committed.
+
