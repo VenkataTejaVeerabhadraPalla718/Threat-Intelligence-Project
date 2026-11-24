@@ -1,4 +1,6 @@
-﻿# Lab-12 — Detailed Lab Guide
+﻿# Lab-12 — Detailed Lab Guide
+
+## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadra718/nosql_exercise-12
 
 ## Project Docker Hub: Not published/verified
 
@@ -14,7 +16,9 @@
 
 ## 2. Previous README notes
 
-# NoSQL Lab 12
+# NoSQL Lab 12
+
+## Docker Hub: https://hub.docker.com/r/venkatatejaveerabhadra718/nosql_exercise-12
 
 ## Project Docker Hub: Not published/verified
 
@@ -96,4 +100,5 @@ py "01_rbac_views.py"
 - [ ] Commands have been tested.
 - [ ] Actual outputs/screenshots are included.
 - [ ] No credentials or private data are committed.
+
 
