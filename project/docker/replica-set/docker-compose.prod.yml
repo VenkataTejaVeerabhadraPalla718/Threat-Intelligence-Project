@@ -1,0 +1,67 @@
+services:
+  prod1:
+    image: mongo:7
+    container_name: prod1
+    entrypoint:
+      - bash
+      - -c
+      - >-
+        cp /keyfile.src /data/keyfile &&
+        chown 999:999 /data/keyfile &&
+        chmod 400 /data/keyfile &&
+        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs1 --keyFile /data/keyfile --bind_ip_all --port 27317
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes: ["./keyfile:/keyfile.src:ro", "prod1_data:/data/db"]
+    ports: ["27317:27317"]
+    restart: unless-stopped
+  prod2:
+    image: mongo:7
+    container_name: prod2
+    entrypoint:
+      - bash
+      - -c
+      - >-
+        cp /keyfile.src /data/keyfile &&
+        chown 999:999 /data/keyfile &&
+        chmod 400 /data/keyfile &&
+        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs1 --keyFile /data/keyfile --bind_ip_all --port 27318
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes: ["./keyfile:/keyfile.src:ro", "prod2_data:/data/db"]
+    ports: ["27318:27318"]
+    restart: unless-stopped
+  prod3:
+    image: mongo:7
+    container_name: prod3
+    entrypoint:
+      - bash
+      - -c
+      - >-
+        cp /keyfile.src /data/keyfile &&
+        chown 999:999 /data/keyfile &&
+        chmod 400 /data/keyfile &&
+        exec /usr/local/bin/docker-entrypoint.sh mongod --replSet rs1 --keyFile /data/keyfile --bind_ip_all --port 27319
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    volumes: ["./keyfile:/keyfile.src:ro", "prod3_data:/data/db"]
+    ports: ["27319:27319"]
+    restart: unless-stopped
+  exporter:
+    image: percona/mongodb_exporter:0.40
+    container_name: prod-exporter
+    command: ["--mongodb.uri=mongodb://admin:admin123@prod1:27317/?authSource=admin", "--collect-all", "--compatible-mode"]
+    ports: ["9216:9216"]
+    restart: on-failure
+
+volumes:
+  prod1_data:
+  prod2_data:
+  prod3_data:
+networks:
+  default:
+    name: sentinelx-local_default
+    external: true

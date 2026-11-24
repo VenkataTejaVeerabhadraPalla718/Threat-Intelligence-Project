@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+!.env.example
+__pycache__
+*.pyc
+.venv
+venv
+docker/tls/certs
+docker/replica-set/keyfile
+backups
+tests
+docs
+scripts
+frontend/legacy

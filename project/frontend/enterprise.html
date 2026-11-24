@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SENTINEL-X</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div id="authRoot" class="hidden"></div>
+<div class="app hidden" id="appRoot">
+  <aside class="side" id="side">
+    <div class="brand"><div class="logo">SX</div><div><b>SENTINEL-X</b><small>THREAT OPERATIONS CENTER</small></div></div>
+    <nav class="nav" id="nav" aria-label="Main navigation"></nav>
+    <div class="sidefoot">LOCAL-FIRST SECURITY PLATFORM<br>MongoDB replica set · Ollama</div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+  <section class="main">
+    <header class="top">
+      <div class="topleft"><button class="btn" id="menuBtn" aria-label="Toggle sidebar">☰</button><div class="crumb">SENTINEL-X / <b id="crumb">OVERVIEW</b></div></div>
+      <div class="topright">
+        <span class="pill userchip" id="userChip"></span>
+        <button class="btn" id="themeBtn" aria-label="Toggle theme">☼ <span class="lbl">Theme</span></button>
+        <button class="btn" id="logoutBtn">⇥ <span class="lbl">Sign out</span></button>
+      </div>
+    </header>
+    <main class="content" id="view"></main>
+  </section>
+</div>
+<script src="/assets/js/app.js"></script>
+</body>
+</html>

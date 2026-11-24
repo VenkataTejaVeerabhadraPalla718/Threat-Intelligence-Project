@@ -1,0 +1,1 @@
+{"message":"Design a Python FastAPI endpoint for SENTINEL-X that accepts a cybersecurity threat document, validates its fields, stores it in MongoDB, and calculates a risk score. Provide a working implementation with error handling."}

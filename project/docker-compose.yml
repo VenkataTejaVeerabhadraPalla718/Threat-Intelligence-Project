@@ -1,0 +1,152 @@
+name: sentinelx-local
+services:
+  mongo1:
+    image: mongo:7
+    container_name: sentinelx-local-mongo1
+    command: ["mongod", "--replSet", "rs0", "--port", "27117", "--bind_ip_all"]
+    ports: ["127.0.0.1:27117:27117"]   # loopback only: this replica set has no authentication
+    volumes: [mongo1_data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27117", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  mongo2:
+    image: mongo:7
+    container_name: sentinelx-local-mongo2
+    command: ["mongod", "--replSet", "rs0", "--port", "27118", "--bind_ip_all"]
+    ports: ["127.0.0.1:27118:27118"]   # loopback only: this replica set has no authentication
+    volumes: [mongo2_data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27118", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  mongo3:
+    image: mongo:7
+    container_name: sentinelx-local-mongo3
+    command: ["mongod", "--replSet", "rs0", "--port", "27119", "--bind_ip_all"]
+    ports: ["127.0.0.1:27119:27119"]   # loopback only: this replica set has no authentication
+    volumes: [mongo3_data:/data/db]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27119", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  mongo-init:
+    image: mongo:7
+    depends_on:
+      mongo1: {condition: service_healthy}
+      mongo2: {condition: service_healthy}
+      mongo3: {condition: service_healthy}
+    restart: "no"
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - |
+        mongosh --host mongo1 --port 27117 --quiet --eval '
+          try {
+            const s=rs.status();
+            print("Replica set already initialized: "+s.set);
+          } catch(e) {
+            print("Initializing rs0");
+            rs.initiate({_id:"rs0",members:[
+              {_id:0,host:"mongo1:27117",priority:2},
+              {_id:1,host:"mongo2:27118",priority:1},
+              {_id:2,host:"mongo3:27119",priority:1}
+            ]});
+          }'
+        echo "Waiting for a writable primary..."
+        for i in $(seq 1 60); do
+          if mongosh --host mongo1 --port 27117 --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)' >/dev/null 2>&1; then
+            echo "Replica set primary is ready."
+            break
+          fi
+          sleep 2
+        done
+        mongosh --host mongo1 --port 27117 --quiet --eval 'printjson(rs.status().members.map(m=>({name:m.name,state:m.stateStr,health:m.health})))'
+
+  api:
+    build: .
+    container_name: sentinelx-local-api
+    env_file: [.env]
+    environment:
+      MONGO_URI: mongodb://mongo1:27117,mongo2:27118,mongo3:27119/?replicaSet=rs0
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_LOCAL_MODEL: ${OLLAMA_LOCAL_MODEL:-qwen3.5:4b}
+      OLLAMA_MODEL: ${OLLAMA_LOCAL_MODEL:-qwen3.5:4b}
+      ASSISTANT_CLOUD_ENABLED: ${ASSISTANT_CLOUD_ENABLED:-false}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_CLOUD_URL: ${OLLAMA_CLOUD_URL:-https://ollama.com/api}
+      OLLAMA_CLOUD_MODEL: ${OLLAMA_CLOUD_MODEL:-gemma4:31b}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      VECTOR_MONGO_URI: mongodb://admin:change-this-local@host.docker.internal:27777/?authSource=admin&directConnection=true
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    ports: ["8000:8000"]
+    volumes:
+      - ./docker/tls/certs:/app/docker/tls/certs:ro
+    depends_on:
+      mongo-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,sys,urllib.request; sys.exit(0 if json.load(urllib.request.urlopen('http://localhost:8000/health', timeout=4)).get('status')=='ok' else 1)"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 25s
+    restart: unless-stopped
+  seed-demo:
+    build: .
+    command: ["python", "/app/backend/seed_demo.py"]
+    environment:
+      MONGO_URI: mongodb://mongo1:27117,mongo2:27118,mongo3:27119/?replicaSet=rs0
+    depends_on:
+      api: {condition: service_started}
+    restart: "no"
+  bootstrap-datasets:
+    build: .
+    command: ["python", "/app/backend/bootstrap_datasets.py"]
+    environment:
+      MONGO_URI: mongodb://mongo1:27117,mongo2:27118,mongo3:27119/?replicaSet=rs0
+      LAB7_TARGET_RECORDS: ${LAB7_TARGET_RECORDS:-40000}
+      LAB10_TARGET_RECORDS: ${LAB10_TARGET_RECORDS:-200000}
+    depends_on:
+      mongo-init: {condition: service_completed_successfully}
+    restart: "no"
+  threat-sync:
+    build: .
+    command: ["python", "/app/backend/sync_service.py"]
+    environment:
+      MONGO_URI: mongodb://mongo1:27117,mongo2:27118,mongo3:27119/?replicaSet=rs0
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-15}
+    depends_on:
+      api: {condition: service_started}
+    restart: unless-stopped
+  atlas-local:
+    image: mongodb/mongodb-atlas-local:latest
+    ports: ["27777:27017"]
+    profiles: ["vector"]
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: admin
+      MONGODB_INITDB_ROOT_PASSWORD: change-this-local
+  cassandra:
+    image: cassandra:5.0
+    ports: ["9042:9042"]
+    profiles: ["graph"]
+    environment:
+      CASSANDRA_CLUSTER_NAME: SENTINELX_Cluster
+      MAX_HEAP_SIZE: 512M
+      HEAP_NEWSIZE: 128M
+  neo4j:
+    image: neo4j:5-community
+    ports: ["7687:7687", "7474:7474"]
+    profiles: ["graph"]
+    environment:
+      NEO4J_AUTH: neo4j/change-this-local
+      NEO4J_dbms_memory_heap_initial__size: 256m
+      NEO4J_dbms_memory_heap_max__size: 256m
+volumes:
+  mongo1_data:
+    name: sentinelx-local-mongo1-data
+  mongo2_data:
+    name: sentinelx-local-mongo2-data
+  mongo3_data:
+    name: sentinelx-local-mongo3-data

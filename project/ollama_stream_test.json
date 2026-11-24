@@ -1,0 +1,1 @@
+{"messages":[{"content":"Explain MongoDB replica sets in three sentences.","role":"user"}],"think":false,"options":{"num_ctx":4096,"num_predict":256,"temperature":0.25},"model":"qwen3.5:4b","stream":true}

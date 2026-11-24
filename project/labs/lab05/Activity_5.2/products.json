@@ -1,0 +1,50 @@
+[
+  {
+    "product_id": "P001",
+    "name": "Laptop",
+    "category": "Computers",
+    "base_price": 850
+  },
+  {
+    "product_id": "P002",
+    "name": "Mouse",
+    "category": "Accessories",
+    "base_price": 25
+  },
+  {
+    "product_id": "P003",
+    "name": "Keyboard",
+    "category": "Accessories",
+    "base_price": 75
+  },
+  {
+    "product_id": "P004",
+    "name": "Monitor",
+    "category": "Displays",
+    "base_price": 220
+  },
+  {
+    "product_id": "P005",
+    "name": "USB Cable",
+    "category": "Accessories",
+    "base_price": 10
+  },
+  {
+    "product_id": "P006",
+    "name": "Headphones",
+    "category": "Audio",
+    "base_price": 120
+  },
+  {
+    "product_id": "P007",
+    "name": "Webcam",
+    "category": "Accessories",
+    "base_price": 55
+  },
+  {
+    "product_id": "P008",
+    "name": "Tablet",
+    "category": "Computers",
+    "base_price": 350
+  }
+]

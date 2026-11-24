@@ -1,0 +1,31 @@
+services:
+  mongo1:
+    image: mongo:7
+    container_name: mongo1
+    command: mongod --replSet rs0 --port 27117 --bind_ip_all
+    ports: ["27117:27117"]
+    volumes: [mongo1_data:/data/db]
+  mongo2:
+    image: mongo:7
+    container_name: mongo2
+    command: mongod --replSet rs0 --port 27118 --bind_ip_all
+    ports: ["27118:27118"]
+    volumes: [mongo2_data:/data/db]
+  mongo3:
+    image: mongo:7
+    container_name: mongo3
+    command: mongod --replSet rs0 --port 27119 --bind_ip_all
+    ports: ["27119:27119"]
+    volumes: [mongo3_data:/data/db]
+  mongo4:
+    image: mongo:7
+    container_name: mongo4
+    command: mongod --replSet rs0 --port 27120 --bind_ip_all
+    ports: ["27120:27120"]
+    volumes: [mongo4_data:/data/db]
+
+volumes:
+  mongo1_data:
+  mongo2_data:
+  mongo3_data:
+  mongo4_data:

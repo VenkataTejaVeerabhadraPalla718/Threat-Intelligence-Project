@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SENTINEL-X | Lab Console</title>
+<style>
+:root{--bg:#f3f5f8;--card:#fff;--ink:#1b2a41;--mut:#667;--ok:#1a7f37;--bad:#c62828;--line:#e3e7ee}
+*{box-sizing:border-box}body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--ink);color:#fff;padding:14px 24px;display:flex;justify-content:space-between;align-items:center}
+header h1{font-size:20px;margin:0}header a{color:#cfe0ff;margin-left:16px;text-decoration:none}
+main{max-width:1100px;margin:18px auto;padding:0 14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.card{background:var(--card);border-radius:8px;padding:12px 14px;border:1px solid var(--line)}
+.card b{display:block;font-size:22px}.card span{color:var(--mut);font-size:13px}
+h2{font-size:16px;margin:22px 0 8px}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line)}
+td,th{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;font-size:14px}th{background:#eef1f6}
+#exps{table-layout:fixed;min-width:760px}
+#exps th:nth-child(1),#exps td:nth-child(1){width:56px}
+#exps th:nth-child(3),#exps td:nth-child(3){width:84px}
+#exps th:nth-child(4),#exps td:nth-child(4){width:60px}
+#exps th:nth-child(5),#exps td:nth-child(5){width:165px}
+#exps td:nth-child(2){white-space:normal;overflow-wrap:anywhere}
+#exps td:nth-child(3),#exps td:nth-child(4),#exps td:nth-child(5){white-space:nowrap}
+#exps .actions{display:flex;align-items:center;gap:6px;white-space:nowrap}
+#manual code{display:inline-block;overflow-wrap:anywhere;white-space:normal}
+.pill{display:inline-block;white-space:nowrap;padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
+.ok{background:var(--ok)}.bad{background:var(--bad)}.partial{background:#9a6a00}.none{background:#98a}
+.note{margin-top:4px;color:var(--mut);font-size:12px;line-height:1.4}
+button{background:var(--ink);color:#fff;border:0;border-radius:6px;padding:6px 14px;cursor:pointer;white-space:nowrap}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible{outline:3px solid #6c9ee8;outline-offset:2px}
+pre{background:#10151f;color:#d7e2f0;padding:12px;border-radius:8px;max-height:420px;overflow:auto;font-size:12.5px;white-space:pre-wrap}
+code{background:#eef1f6;padding:2px 6px;border-radius:4px;font-size:12.5px}
+@media(max-width:720px){
+  header{align-items:flex-start;flex-direction:column;gap:10px;padding:14px}
+  header nav{display:flex;flex-wrap:wrap;gap:12px}
+  header a{margin-left:0}
+  #cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .card{padding:10px}
+  .card b{font-size:20px}
+  main{overflow-x:hidden}
+  table{display:block;overflow-x:auto;white-space:nowrap}
+  #exps{display:block;min-width:0;overflow:visible;white-space:normal;border:0;background:transparent}
+  #exps tr:first-child{display:none}
+  #exps tr:not(:first-child){
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:"lab status" "description description" "time actions";
+    align-items:center;
+    margin-bottom:10px;
+    padding:6px 8px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    background:var(--card);
+  }
+  #exps td{display:block;width:auto;min-width:0;padding:4px 6px;border:0}
+  #exps td:nth-child(1){grid-area:lab;font-weight:700}
+  #exps td:nth-child(2){grid-area:description;white-space:normal;overflow-wrap:anywhere}
+  #exps td:nth-child(3){grid-area:status;justify-self:end}
+  #exps td:nth-child(4){grid-area:time;color:var(--mut);font-size:12px}
+  #exps td:nth-child(4)::before{content:"Time: "}
+  #exps td:nth-child(5){grid-area:actions;justify-self:end}
+  #exps .actions{justify-content:flex-end}
+  #exps .actions button{min-height:36px}
+}
+</style></head><body>
+<header><h1>SENTINEL-X | Lab Console</h1>
+<nav><a href="/">Threats</a><a href="/chat">Chat</a><a href="/docs">API</a></nav></header>
+<main>
+<div class="cards" id="cards"></div>
+<h2>Replica set</h2><table id="members"></table>
+<h2>Experiments (click Run, the output appears below)</h2><table id="exps"></table>
+<h2>Output</h2><pre id="out">Pick an experiment.</pre>
+<h2>Manual experiments (extra containers, run in a terminal)</h2><table id="manual"></table>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+function el(tag, text, cls){const e=document.createElement(tag); if(text!=null) e.textContent=text; if(cls) e.className=cls; return e;}
+
+async function status(){
+  const response = await fetch('/api/dashboard/status');
+  if(!response.ok) throw new Error('Status request failed ('+response.status+')');
+  const s = await response.json();
+  const m = s.mongo || {};
+  const items = [
+    [s.threats, 'threats'], [s.vectors, 'embedded threats'],
+    [m.cache_hit_ratio !== undefined ? (m.cache_hit_ratio*100).toFixed(2)+'%' : '-', 'cache hit ratio'],
+    [m.connections ?? '-', 'connections'],
+    [m.max_lag_s !== undefined ? m.max_lag_s+'s' : '-', 'max replication lag'],
+    [s.ollama ? s.ollama.length+' models' : 'OFF', 'Ollama']];
+  const c = $('cards'); c.replaceChildren();
+  items.forEach(([v,l]) => {const d=el('div',null,'card'); d.append(el('b',String(v)), el('span',l)); c.append(d);});
+  const t = $('members'); t.replaceChildren();
+  (m.members || []).forEach(x => {const r=t.insertRow(); r.insertCell().textContent=x.name;
+    r.insertCell().textContent=x.state; r.insertCell().textContent='lag '+x.lag_s+'s';});
+  if(!(m.members || []).length) t.insertRow().insertCell().textContent = m.error || 'no replica set data';
+}
+
+async function load(){
+  const response = await fetch('/api/dashboard/experiments');
+  if(!response.ok) throw new Error('Experiments request failed ('+response.status+')');
+  const d = await response.json();
+  const t = $('exps'); t.replaceChildren();
+  const h = t.insertRow();
+  ['Lab','Experiment','Last run','Time',''].forEach(x => {const c=document.createElement('th'); c.textContent=x; h.append(c);});
+  d.experiments.forEach(e => {
+    const r = t.insertRow();
+    r.insertCell().textContent = e.lab;
+    const description = r.insertCell();
+    description.append(el('div', e.title));
+    if (e.note) description.append(el('div', e.note, 'note'));
+    const label = e.last ? (e.last.status || (e.last.ok ? 'passed' : 'failed')) : 'not run';
+    const cls = label === 'passed' ? 'ok' : label === 'partial' ? 'partial' : e.last ? 'bad' : 'none';
+    r.insertCell().append(el('span', label, 'pill '+cls));
+    r.insertCell().textContent = e.last ? e.last.seconds+'s' : '';
+    const run_b = el('button','Run'); run_b.onclick = () => run(e, run_b);
+    const out_b = el('button','Last output'); out_b.disabled = !e.last;
+    if(!e.last) out_b.title = 'Run this experiment to create output.';
+    out_b.onclick = () => { $('out').textContent = e.last.output || '(No output)'; };
+    const actions = el('div',null,'actions');
+    actions.append(run_b, out_b);
+    r.insertCell().append(actions);
+  });
+  const m = $('manual'); m.replaceChildren();
+  d.manual.forEach(x => {const r=m.insertRow(); r.insertCell().textContent=x.lab;
+    r.insertCell().textContent=x.title; r.insertCell().append(el('code', x.cmd));});
+}
+
+async function run(e, b){
+  if(e.warning && !confirm(e.warning)) return;
+  b.disabled = true; b.textContent = 'Running...'; $('out').textContent = 'Running '+e.title+' ...';
+  try{
+    const url = '/api/dashboard/run/'+e.id+(e.warning ? '?confirmed=true' : '');
+    const response = await fetch(url, {method:'POST'});
+    const r = await response.json();
+    if(!response.ok) throw new Error(r.detail || 'Experiment failed to start.');
+    $('out').textContent = r.output || '(No output)';
+  }
+  catch(x){ $('out').textContent = 'Error: '+(x.message || x); }
+  try{
+    await load();
+  }catch(x){
+    if(b.isConnected){b.disabled = false; b.textContent = 'Run';}
+    $('out').textContent += '\n\nCould not refresh experiment list: '+(x.message || x);
+    return;
+  }
+  try{
+    await status();
+  }catch(x){
+    $('out').textContent += '\n\nCould not refresh service status: '+(x.message || x);
+  }
+}
+async function initialize(){
+  try{
+    await Promise.all([status(), load()]);
+  }catch(x){
+    $('out').textContent = 'Dashboard data unavailable: '+(x.message || x)+'. Check that FastAPI is running, then refresh this page.';
+  }
+}
+initialize();
+setInterval(async () => {
+  try{
+    await status();
+  }catch(x){
+    const t = $('members'); t.replaceChildren();
+    t.insertRow().insertCell().textContent = 'Status unavailable: '+(x.message || x);
+  }
+}, 10000);
+</script></body></html>

@@ -1,0 +1,90 @@
+services:
+  cfg1:
+    image: mongo:7
+    container_name: cfg1
+    command: mongod --configsvr --replSet cfgrs --port 27019 --bind_ip_all --wiredTigerCacheSizeGB 0.25
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27019", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  cfg2:
+    image: mongo:7
+    container_name: cfg2
+    command: mongod --configsvr --replSet cfgrs --port 27019 --bind_ip_all --wiredTigerCacheSizeGB 0.25
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27019", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  cfg3:
+    image: mongo:7
+    container_name: cfg3
+    command: mongod --configsvr --replSet cfgrs --port 27019 --bind_ip_all --wiredTigerCacheSizeGB 0.25
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27019", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  shard1:
+    image: mongo:7
+    container_name: shard1
+    command: mongod --shardsvr --replSet sh1rs --port 27018 --bind_ip_all --wiredTigerCacheSizeGB 0.25
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27018", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  shard2:
+    image: mongo:7
+    container_name: shard2
+    command: mongod --shardsvr --replSet sh2rs --port 27018 --bind_ip_all --wiredTigerCacheSizeGB 0.25
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27018", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  router:
+    image: mongo:7
+    container_name: router
+    command: mongos --configdb cfgrs/cfg1:27019,cfg2:27019,cfg3:27019 --bind_ip_all --port 27017
+    ports: ["27217:27017"]
+    depends_on:
+      cfg1:
+        condition: service_healthy
+      cfg2:
+        condition: service_healthy
+      cfg3:
+        condition: service_healthy
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--port", "27017", "--eval", "db.adminCommand({ping:1}).ok"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  bootstrap:
+    image: mongo:7
+    profiles: ["init"]
+    depends_on:
+      cfg1:
+        condition: service_healthy
+      cfg2:
+        condition: service_healthy
+      cfg3:
+        condition: service_healthy
+      shard1:
+        condition: service_healthy
+      shard2:
+        condition: service_healthy
+    volumes:
+      - ./bootstrap.sh:/bootstrap.sh:ro
+    entrypoint: ["bash", "/bootstrap.sh"]
+  register:
+    image: mongo:7
+    profiles: ["init"]
+    depends_on:
+      router:
+        condition: service_healthy
+    volumes:
+      - ./register.sh:/register.sh:ro
+    entrypoint: ["bash", "/register.sh"]

@@ -1,0 +1,10 @@
+{
+  "repeat_count_per_query": 10,
+  "queries": [
+    "category + price sort",
+    "price range",
+    "tag lookup",
+    "text search",
+    "category + rating"
+  ]
+}

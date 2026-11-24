@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101a2b">
+  <title>SENTINEL-X | Threat Intelligence</title>
+  <style>
+    :root {
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      color: #172033;
+      background: #f3f6fb;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; }
+    button, input, select { font: inherit; }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 16px max(24px, calc((100vw - 1120px) / 2));
+      color: #f7f9ff;
+      background: #101a2b;
+      border-bottom: 1px solid #25334b;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      border-radius: 12px;
+      color: #102037;
+      background: #71e0c2;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .brand-title { margin: 0; font-size: 16px; }
+    .brand-subtitle { margin: 3px 0 0; color: #aab6cb; font-size: 12px; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .chat-link {
+      display: inline-flex;
+      min-height: 40px;
+      align-items: center;
+      justify-content: center;
+      padding: 0 14px;
+      border: 1px solid #456080;
+      border-radius: 10px;
+      color: #fff;
+      background: #1b2a41;
+      font-size: 13px;
+      font-weight: 650;
+      text-decoration: none;
+      transition: background .15s, border-color .15s, transform .15s;
+    }
+    .chat-link:hover { transform: translateY(-1px); border-color: #71e0c2; background: #263a57; }
+    main { width: min(1120px, calc(100% - 36px)); margin: 34px auto 60px; }
+    .hero {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 22px;
+    }
+    .eyebrow { margin: 0 0 8px; color: #287c72; font-size: 11px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(26px, 4vw, 36px); letter-spacing: -.035em; }
+    .hero p:last-child { max-width: 600px; margin: 8px 0 0; color: #66738a; line-height: 1.5; }
+    .updated { flex: 0 0 auto; padding-bottom: 4px; color: #7a8598; font-size: 12px; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 22px;
+    }
+    .stat {
+      min-height: 104px;
+      padding: 17px 18px;
+      border: 1px solid #e1e7f0;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: 0 8px 24px #23385608;
+    }
+    .stat-label { color: #758097; font-size: 12px; font-weight: 600; }
+    .stat-value { display: block; margin-top: 9px; color: #1a2941; font-size: 27px; font-weight: 750; }
+    .stat.critical .stat-value { color: #c33b4b; }
+    .stat.high .stat-value { color: #bd641d; }
+    .workspace {
+      overflow: hidden;
+      border: 1px solid #e1e7f0;
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: 0 16px 42px #2338560a;
+    }
+    .section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 20px 14px;
+    }
+    h2 { margin: 0; font-size: 17px; }
+    .result-count { color: #7a8598; font-size: 12px; }
+    .filters {
+      display: grid;
+      grid-template-columns: minmax(220px, 1.7fr) repeat(3, minmax(140px, 1fr)) auto;
+      gap: 9px;
+      padding: 0 20px 18px;
+      border-bottom: 1px solid #edf0f5;
+    }
+    .filters input, .filters select {
+      width: 100%;
+      min-height: 42px;
+      padding: 0 12px;
+      border: 1px solid #dce3ed;
+      border-radius: 9px;
+      outline: none;
+      color: #29364c;
+      background: #fff;
+    }
+    .filters input::placeholder { color: #98a2b3; }
+    .filters input:focus, .filters select:focus { border-color: #7da5dc; box-shadow: 0 0 0 3px #3273c51a; }
+    .primary-button, .more-button {
+      min-height: 42px;
+      padding: 0 17px;
+      border: 0;
+      border-radius: 9px;
+      color: #fff;
+      background: #2459a6;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .primary-button:hover, .more-button:hover { background: #194987; }
+    button:disabled { opacity: .6; cursor: wait; }
+    #notice { padding: 0 20px; color: #657189; font-size: 13px; }
+    #notice:not(:empty) { padding-top: 16px; }
+    #notice.error { color: #a72c3a; }
+    #list { padding: 0 20px; }
+    .threat {
+      padding: 17px 0;
+      border-bottom: 1px solid #edf0f5;
+    }
+    .threat:last-child { border-bottom: 0; }
+    .threat-title {
+      color: #1c3e6e;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.45;
+      text-decoration: none;
+    }
+    .threat-title:hover { color: #287c72; text-decoration: underline; text-underline-offset: 3px; }
+    .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 9px; color: #788398; font-size: 12px; }
+    .tag { padding: 4px 8px; border-radius: 999px; color: #526179; background: #eef2f7; font-size: 11px; font-weight: 650; }
+    .tag.critical { color: #a62e3e; background: #ffeaed; }
+    .tag.high { color: #a34a12; background: #fff0df; }
+    .tag.medium { color: #87600d; background: #fff7da; }
+    .tag.low { color: #247451; background: #e5f6ed; }
+    .ioc-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .ioc { padding: 4px 7px; border: 1px solid #e5e9f1; border-radius: 6px; color: #59667d; background: #f8f9fc; font-family: Consolas, monospace; font-size: 11px; }
+    .more-row { display: flex; justify-content: center; padding: 6px 20px 20px; }
+    .more-button { color: #2459a6; background: #edf4ff; }
+    .more-button:hover { background: #dceaff; }
+    @media (max-width: 850px) {
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .filters input { grid-column: 1 / -1; }
+    }
+    @media (max-width: 560px) {
+      .topbar { flex-wrap: wrap; padding: 13px 16px; }
+      .brand-subtitle { display: none; }
+      .top-actions { width: 100%; justify-content: flex-end; gap: 7px; }
+      .chat-link { min-height: 38px; padding: 0 10px; font-size: 12px; }
+      main { width: min(100% - 24px, 1120px); margin: 24px auto 42px; }
+      .hero { display: block; }
+      .updated { margin-top: 12px; }
+      .stats { gap: 8px; }
+      .stat { min-height: 90px; padding: 13px; }
+      .stat-value { font-size: 24px; }
+      .filters { grid-template-columns: 1fr 1fr; padding-right: 12px; padding-left: 12px; }
+      .section-heading { padding-right: 12px; padding-left: 12px; }
+      #notice, #list { padding-right: 12px; padding-left: 12px; }
+      .threat { padding: 15px 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">CTI</div>
+      <div>
+        <p class="brand-title">Threat Intelligence Platform</p>
+        <p class="brand-subtitle">Monitor reports, indicators, and emerging risks</p>
+      </div>
+    </div>
+    <nav class="top-actions" aria-label="Main navigation">
+      <a class="chat-link" href="/dashboard">Lab results <span aria-hidden="true">&nbsp;→</span></a>
+      <a class="chat-link" href="/chat">Ask the CTI assistant <span aria-hidden="true">&nbsp;→</span></a>
+    </nav>
+  </header>
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Threat operations</p>
+        <h1>Intelligence dashboard</h1>
+        <p>Search recent security reporting, review severity trends, and inspect indicators from your collected sources.</p>
+      </div>
+      <div class="updated" id="updated" aria-live="polite"></div>
+    </section>
+    <section class="stats" id="cards" aria-label="Threat statistics">
+      <article class="stat"><span class="stat-label">Total threats</span><strong class="stat-value">—</strong></article>
+      <article class="stat critical"><span class="stat-label">Critical</span><strong class="stat-value">—</strong></article>
+      <article class="stat high"><span class="stat-label">High severity</span><strong class="stat-value">—</strong></article>
+      <article class="stat"><span class="stat-label">Sources monitored</span><strong class="stat-value">—</strong></article>
+    </section>
+    <section class="workspace" aria-labelledby="results-heading">
+      <div class="section-heading">
+        <h2 id="results-heading">Threat reports</h2>
+        <span class="result-count" id="count" aria-live="polite"></span>
+      </div>
+      <form class="filters" id="filters">
+        <input id="q" type="search" placeholder="Search reports, domains, IPs, or hashes" aria-label="Search threats">
+        <select id="type" aria-label="Filter by threat type"><option value="">All types</option></select>
+        <select id="severity" aria-label="Filter by severity">
+          <option value="">All severities</option>
+          <option value="Critical">Critical</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
+        <select id="source" aria-label="Filter by source"><option value="">All sources</option></select>
+        <button class="primary-button" id="go" type="submit">Search</button>
+      </form>
+      <div id="notice" role="status"></div>
+      <div id="list" aria-live="polite"></div>
+      <div class="more-row">
+        <button class="more-button" id="more" type="button" hidden>Load more reports</button>
+      </div>
+    </section>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    const PAGE_SIZE = 20;
+    let skip = 0;
+    let total = 0;
+    let loading = false;
+
+    function element(tag, text, className) {
+      const node = document.createElement(tag);
+      if (text !== undefined) node.textContent = text;
+      if (className) node.className = className;
+      return node;
+    }
+
+    async function getJSON(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Request failed (${response.status})`);
+      return response.json();
+    }
+
+    function setNotice(message, isError = false) {
+      $("notice").textContent = message;
+      $("notice").classList.toggle("error", isError);
+    }
+
+    function fillOptions(select, items, labelFor, valueFor) {
+      for (const item of items) {
+        const label = labelFor(item);
+        const value = valueFor(item);
+        if (label == null || value == null) continue;
+        const option = element("option", label);
+        option.value = value;
+        select.appendChild(option);
+      }
+    }
+
+    function updateStats(stats, sources) {
+      const severity = Object.fromEntries(stats.by_severity.map(row => [row._id, row.count]));
+      const values = [stats.total, severity.Critical || 0, severity.High || 0, sources.length];
+      document.querySelectorAll(".stat-value").forEach((node, index) => {
+        node.textContent = Number(values[index]).toLocaleString();
+      });
+      $("updated").textContent = `Updated ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      fillOptions($("type"), stats.by_type, row => row._id, row => row._id);
+      fillOptions($("source"), sources, source => source.name, source => source._id);
+    }
+
+    function addThreat(threat) {
+      const card = element("article", undefined, "threat");
+      const title = element("a", threat.title || "Untitled report", "threat-title");
+      try {
+        const url = new URL(threat.url);
+        if (url.protocol === "http:" || url.protocol === "https:") {
+          title.href = url.href;
+          title.target = "_blank";
+          title.rel = "noopener noreferrer";
+        }
+      } catch {
+        title.removeAttribute("href");
+      }
+      card.appendChild(title);
+
+      const meta = element("div", undefined, "meta");
+      const type = threat.classification?.type || "Unclassified";
+      const severity = threat.classification?.severity || "Unknown";
+      meta.appendChild(element("span", type, "tag"));
+      meta.appendChild(element("span", severity, `tag ${severity.toLowerCase()}`));
+      meta.appendChild(element("span", threat.source || "Unknown source"));
+      if (threat.published_at) {
+        const date = new Date(threat.published_at);
+        if (!Number.isNaN(date.valueOf())) {
+          meta.appendChild(element("span", date.toLocaleDateString()));
+        }
+      }
+      card.appendChild(meta);
+
+      if (Array.isArray(threat.iocs) && threat.iocs.length) {
+        const indicators = element("div", undefined, "ioc-list");
+        threat.iocs.slice(0, 5).forEach(ioc => {
+          indicators.appendChild(element("span", `${ioc.type}: ${ioc.value}`, "ioc"));
+        });
+        card.appendChild(indicators);
+      }
+      $("list").appendChild(card);
+    }
+
+    async function search(reset) {
+      if (loading) return;
+      if (reset) {
+        skip = 0;
+        total = 0;
+        $("list").replaceChildren();
+      }
+      loading = true;
+      $("go").disabled = true;
+      $("more").disabled = true;
+      $("more").textContent = "Loading…";
+      setNotice("Loading threat reports…");
+      try {
+        const params = new URLSearchParams({
+          q: $("q").value.trim(),
+          type: $("type").value,
+          severity: $("severity").value,
+          source: $("source").value,
+          limit: PAGE_SIZE,
+          skip
+        });
+        const result = await getJSON(`/api/threats?${params}`);
+        total = result.total;
+        result.results.forEach(addThreat);
+        skip += result.results.length;
+        $("count").textContent = `Showing ${skip.toLocaleString()} of ${total.toLocaleString()}`;
+        $("more").hidden = skip >= total;
+        if (total === 0) setNotice("No reports match these filters.");
+        else setNotice("");
+      } catch (error) {
+        setNotice(`Could not load reports: ${error.message}`, true);
+      } finally {
+        loading = false;
+        $("go").disabled = false;
+        $("more").disabled = false;
+        $("more").textContent = "Load more reports";
+      }
+    }
+
+    async function initialize() {
+      $("go").disabled = true;
+      try {
+        const [stats, sources] = await Promise.all([
+          getJSON("/api/stats"),
+          getJSON("/api/sources")
+        ]);
+        updateStats(stats, sources);
+        await search(true);
+      } catch (error) {
+        setNotice(`Could not load dashboard: ${error.message}`, true);
+        $("go").disabled = false;
+      }
+    }
+
+    $("filters").addEventListener("submit", event => {
+      event.preventDefault();
+      search(true);
+    });
+    $("more").addEventListener("click", () => search(false));
+    initialize();
+  </script>
+</body>
+</html>
